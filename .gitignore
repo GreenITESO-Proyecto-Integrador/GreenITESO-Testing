@@ -1,0 +1,22 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
+
+# Reporting (outputs generados por cada corrida)
+reporting/allure-results/*
+reporting/allure-report/
+reporting/screenshots/*
+reporting/logs/*
+!reporting/**/.gitkeep
+test-results/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

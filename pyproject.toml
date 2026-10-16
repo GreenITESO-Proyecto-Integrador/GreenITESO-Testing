@@ -1,0 +1,39 @@
+[project]
+name = "greeniteso-testing"
+version = "0.1.0"
+description = "Framework de automatización de pruebas E2E para GreenITESO (Playwright + pytest)"
+readme = "CLAUDE.md"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.48",
+    "pytest>=8.3",
+    "pytest-playwright>=0.5",
+    "pytest-dependency>=0.6",
+    "pytest-rerunfailures>=14.0",
+    "allure-pytest>=2.13",
+    "python-dotenv>=1.0",
+    "pytest-xdist>=3.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --dist=loadfile --alluredir=reporting/allure-results"
+markers = [
+    "sanity: pruebas rápidas que corren diario",
+    "full: suite completa que corre en cada release a prod",
+]
+log_cli = true
+log_cli_level = "INFO"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"

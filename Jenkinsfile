@@ -3,8 +3,11 @@
 //  - Release prod  -> SUITE=full   (disparado desde GitHub Actions del repo de frontend vía buildWithParameters)
 //
 // Requisitos en Jenkins:
-//  - Plugins: Pipeline, Credentials Binding, JUnit, Allure Jenkins Plugin (+ tool "allure" configurado)
-//  - Credential tipo "Username with password" con id: greeniteso-test-user
+//  - Plugins: Pipeline, JUnit, Allure Jenkins Plugin (+ tool "allure" configurado)
+//  - Sesiones de los usuarios de prueba guardadas en el agente (AUTH_MODE=refresh): una persona
+//    corre UNA vez, en el agente y con el usuario de Jenkins, `uv run python -m src.utils.auth --role <rol>`
+//    e inicia sesión con Microsoft. Se guardan en ~/.greeniteso-e2e/auth (fuera del workspace) y
+//    cada corrida las renueva; si pasan más de 7 días sin corridas hay que repetir el login.
 //  - Agente Linux/macOS con curl; las dependencias de sistema de Playwright instaladas una vez
 //    (sudo npx playwright install-deps  ó  sudo uv run playwright install-deps)
 
@@ -13,7 +16,9 @@ pipeline {
 
     parameters {
         choice(name: 'SUITE', choices: ['sanity', 'full'], description: 'Marker de pytest a correr')
-        string(name: 'BASE_URL', defaultValue: 'https://greeniteso.example.com', description: 'URL del ambiente a probar')
+        string(name: 'BASE_URL', defaultValue: 'https://greeniteso-production-frontend-682248660949.northamerica-south1.run.app', description: 'URL del frontend a probar')
+        string(name: 'API_BASE_URL', defaultValue: '', description: 'URL del backend; vacío = mismo origen que BASE_URL')
+        choice(name: 'AUTH_MODE', choices: ['refresh', 'mock'], description: 'refresh = ambiente desplegado; mock = stack local')
         choice(name: 'BROWSER', choices: ['chromium', 'firefox', 'webkit'], description: 'Navegador de Playwright')
         string(name: 'WORKERS', defaultValue: '4', description: 'Módulos en paralelo (pytest-xdist). "auto" = núm. de CPUs, "0" = secuencial')
         string(name: 'EXTRA_PYTEST_ARGS', defaultValue: '', description: 'Args extra, p. ej. "-k Metricas" o "tests/equipo1"')
@@ -36,6 +41,8 @@ H 6 * * *''')
         PATH = "${env.HOME}/.local/bin:${env.PATH}"
         HEADLESS = 'true'
         BASE_URL = "${params.BASE_URL}"
+        API_BASE_URL = "${params.API_BASE_URL}"
+        AUTH_MODE = "${params.AUTH_MODE}"
     }
 
     stages {
@@ -53,18 +60,14 @@ H 6 * * *''')
 
         stage('Test') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'greeniteso-test-user',
-                                                  usernameVariable: 'TEST_USER',
-                                                  passwordVariable: 'TEST_PASSWORD')]) {
-                    sh '''
-                        uv run pytest -m "${SUITE}" \
-                            --browser "${BROWSER}" \
-                            -n "${WORKERS}" \
-                            --reruns 1 \
-                            --junitxml=reporting/junit.xml \
-                            ${EXTRA_PYTEST_ARGS}
-                    '''
-                }
+                sh '''
+                    uv run pytest -m "${SUITE}" \
+                        --browser "${BROWSER}" \
+                        -n "${WORKERS}" \
+                        --reruns 1 \
+                        --junitxml=reporting/junit.xml \
+                        ${EXTRA_PYTEST_ARGS}
+                '''
             }
         }
     }

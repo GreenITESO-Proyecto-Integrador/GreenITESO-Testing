@@ -8,6 +8,8 @@
 
 Each team checks a change owned by another team and leaves evidence that a classmate can repeat. The implementing team may help prepare a test account or explain a contract, but does not mark its own change as peer-tested. Automated checks and peer acceptance are separate results.
 
+For the teacher's current cycle, use the [team rotation and starter matrix](peer-testing-friday.md). The assignments come from the class whiteboard; browser coverage, where to keep records, and any shared-environment access still need team agreement.
+
 ## Before a run
 
 Record the issue or acceptance criterion, repositories and exact commit SHAs under test, the tester's team, the owning team, the chosen environment, and the intended test scope. Agree on a safe test account and synthetic records with the environment owner.
@@ -34,16 +36,19 @@ The separate `GreenITESO-Testing` framework uses Python Playwright, pytest, and 
 
 ## Reproducible commands
 
-Use the repository's lockfile and documented setup. Do not install ad hoc dependencies during a peer run.
+Use a repository's lockfile when it exists and follow its documented setup. Do not add ad hoc dependencies during a peer run.
 
 ### Frontend Playwright
 
 From the Frontend repository:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm test
+pnpm install --no-frozen-lockfile
+pnpm exec playwright install chromium
+pnpm exec playwright test --project=chromium
 ```
+
+As checked on 16 November 2026, Frontend `dev` does not track a `pnpm-lock.yaml`, so a frozen install fails. The install above can resolve different dependency versions over time; record the revision and versions used. Do not commit a newly generated lockfile as part of a test run. Once the project tracks a lockfile, use `pnpm install --frozen-lockfile` instead.
 
 To narrow a run, use the repository's installed Playwright CLI, for example:
 
@@ -51,7 +56,7 @@ To narrow a run, use the repository's installed Playwright CLI, for example:
 pnpm exec playwright test tests/example.spec.ts --project=chromium
 ```
 
-The default config runs all configured browser projects and starts Vite only. For an API-backed journey, start the Backend and its PostgreSQL service using the Backend's own instructions and explicitly record the API URL/configuration. Do not claim an integrated test if requests were mocked or intercepted.
+The command above runs Chromium. The default `pnpm test` runs all configured browser projects; install Firefox and WebKit first if running it. The config starts Vite only. For an API-backed journey, start the Backend and its PostgreSQL service using the Backend's own instructions and explicitly record the API URL/configuration. Do not claim an integrated test if requests were mocked or intercepted.
 
 ### Backend and database
 
@@ -74,7 +79,7 @@ From `GreenITESO-Testing`:
 ```sh
 uv sync --frozen
 uv run playwright install chromium
-cp .env.example .env
+if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi
 uv run pytest -m sanity
 ```
 
@@ -131,7 +136,7 @@ Describe a failure as observed behavior, not an inferred cause. Include the exac
 
 ## Agreement needed before adoption
 
-The three teams should confirm: (1) the module ownership and rotating peer-testing assignments; (2) whether Chromium-only is acceptable for routine checks and when Firefox/WebKit are required; (3) where run records live (this repository, the GitHub issue, or both); and (4) who may authorize shared staging checks. Until confirmed, treat the sections above as a proposal and the existing project/repository rules as authoritative.
+The teacher's rotation for this cycle is recorded in the [starter matrix](peer-testing-friday.md). The teams should still confirm: (1) any changes to module ownership; (2) whether Chromium-only is acceptable for routine checks and when Firefox/WebKit are required; (3) where run records live (this repository, the GitHub issue, or both); and (4) who may authorize shared-environment checks. Until confirmed, treat the process details above as a proposal and the existing project/repository rules as authoritative.
 
 ## Source references
 

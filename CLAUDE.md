@@ -10,7 +10,7 @@ Somos 3 equipos. **Ningún equipo prueba su propio trabajo**: cada equipo escrib
 brew install uv                         # o: curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync                                 # crea .venv con las dependencias de uv.lock
 uv run playwright install chromium      # navegadores de Playwright
-cp .env.example .env                    # y llenar BASE_URL, TEST_USER, TEST_PASSWORD
+if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi  # llenar valores sin sobrescribir
 ```
 
 - Para agregar una dependencia usa `uv add <paquete>` (o `uv add --dev <paquete>`), **nunca** `pip install`. Sube `pyproject.toml` y `uv.lock` en el mismo commit.

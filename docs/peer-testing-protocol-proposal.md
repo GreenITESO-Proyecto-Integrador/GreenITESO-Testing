@@ -16,7 +16,7 @@ Record the issue or acceptance criterion, repositories and exact commit SHAs und
 
 - Prefer isolated local environments. Backend and database checks use PostgreSQL 18 through the backend's Compose/devcontainer workflow; do not use Neon credentials for local development.
 - Use synthetic users and records. Do not include real student data, passwords, tokens, connection strings, or unredacted personal information in logs, screenshots, traces, or reports.
-- Do not run destructive checks, migrations, seed commands, or cleanup against shared staging or production without the environment owner's explicit authorization and a documented recovery plan. Never use production for routine peer testing.
+- Do not run destructive checks, migrations, seed commands, or cleanup against shared staging or production without the environment owner's explicit authorization and a documented recovery plan. Use an isolated environment for routine peer testing. Any production demo smoke check must be explicitly agreed, non-destructive, and recorded separately.
 - Record the app, API, database/schema, and browser versions that materially affect the result. If a required service or test account is unavailable, report `BLOCKED` instead of substituting an unapproved environment.
 
 ## Choose the right test layer
@@ -80,10 +80,11 @@ From `GreenITESO-Testing`:
 uv sync --frozen
 uv run playwright install chromium
 if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi
-uv run pytest -m sanity
 ```
 
-Use `uv run pytest -m full` only for the agreed full suite/release scope. Put credentials only in the ignored local `.env` or an approved CI secret store. Confirm `BASE_URL` points to the authorized test environment before starting. The current framework scaffold may not yet contain cases for every module; report the collected and executed counts and list missing cases as `NOT RUN`.
+Before authenticating or running tests, inspect and configure `.env`: the current `.env.example` and the application's fallback target production, and `E2E_CLEANUP=true` enables automatic cleanup at the start and end of a run. That cleanup can delete posts, dissolve clans, change campaigns, reject action logs and restore profiles; some changes cannot be reversed. Agree the destination, test accounts and cleanup with the environment owner. For a safe production smoke check, select only authorized non-destructive cases and disable cleanup; the cases themselves must also be verified non-destructive. Use an isolated environment for routine runs. Never paste credentials or tokens into results.
+
+Once the destination and accounts are configured, `uv run pytest -m sanity` runs the sanity selection; use `uv run pytest -m full` only for the agreed full suite/release scope. Report collected and executed counts and list missing cases as `NOT RUN`.
 
 Before selecting Firefox or WebKit in this framework, install that browser too (for example, `uv run playwright install chromium firefox webkit`). Installing Chromium alone does not prepare the other engines.
 

@@ -10,8 +10,16 @@ Somos 3 equipos. **Ningún equipo prueba su propio trabajo**: cada equipo escrib
 brew install uv                         # o: curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync                                 # crea .venv con las dependencias de uv.lock
 uv run playwright install chromium      # navegadores de Playwright
-if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi  # llenar valores sin sobrescribir
+if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi  # no sobrescribir
+# Revisa y configura BASE_URL, AUTH_MODE, cuentas y E2E_CLEANUP antes de iniciar sesión o probar.
+uv run python -m src.utils.auth --role student   # login manual con Microsoft, una vez por rol
+uv run python -m src.utils.auth --role admin
+uv run python -m src.utils.auth --role leader
 ```
+
+Por default, las pruebas corren contra la **versión desplegada en producción** (`BASE_URL` en `.env.example`). La API está en el mismo dominio, porque nginx manda `/api/` al backend.
+
+`E2E_CLEANUP` también está activado por defecto: iniciar o terminar una corrida puede modificar datos mediante la API, incluso antes de ejecutar el primer caso. Revisa el destino y las cuentas, usa un ambiente aislado para pruebas que cambien datos y acuerda el alcance antes de usar un ambiente compartido. Desactivar la limpieza no convierte los casos en pruebas de solo lectura.
 
 - Para agregar una dependencia usa `uv add <paquete>` (o `uv add --dev <paquete>`), **nunca** `pip install`. Sube `pyproject.toml` y `uv.lock` en el mismo commit.
 - `.env` no se sube al repo. Las variables se leen solo desde `src/configs/environment.py`; no uses `os.getenv` en ningún otro archivo.
@@ -21,8 +29,8 @@ if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi  # llenar valor
 ```bash
 uv run pytest -m sanity                          # suite diaria
 uv run pytest -m full                            # suite completa (release a prod)
-uv run pytest tests/equipo1/test_Metricas.py     # un módulo
-uv run pytest -k test_01_02_003                  # un test
+uv run pytest tests/Auth/test_Auth.py            # un módulo
+uv run pytest -k test_00_01_006                  # un test
 uv run pytest -m sanity --headed --slowmo 300    # viendo el navegador
 uv run pytest -m full --browser firefox
 allure serve reporting/allure-results            # reporte (requiere: brew install allure)
@@ -38,18 +46,24 @@ src/
   configs/environment.py    # única fuente de configuración (.env → constantes)
   actions/<Modulo>_actions.py   # TODA la lógica de cada módulo
   utils/
-    common_actions.py       # acciones de UI reutilizables entre módulos/equipos
+    auth.py                 # sesión de prueba: tokens del backend → sessionStorage (modos refresh/mock)
+    test_data.py            # marcador de datos de prueba (unique_name) + limpieza al final de la corrida
+    common_actions.py       # acciones de UI reutilizables entre módulos/equipos (login_as, go_to, ...)
     helpers.py              # chequeos de estado, esperas, assert_action
     locators.py             # clase Locators (selectores XPath/CSS)
     logger.py               # get_logger(__name__)
 tests/
-  equipo1/ equipo2/ equipo3/
+  <Modulo>/                 # una carpeta por módulo del test plan (Auth, Campanas, Clanes, ...)
+    __init__.py             # docstring con el ID del módulo, la ruta y sus casos TC-MM-NNN
     test_<Modulo>.py        # SOLO declaraciones de tests
+  equipo1/ equipo2/ equipo3/   # cuando se haga el reparto, cada carpeta de módulo se mueve aquí
 Jenkinsfile
 ci/frontend-release-trigger.yml   # workflow para el repo de frontend (opcional)
 ```
 
-**Regla 1:1:** a cada `tests/equipoN/test_<Modulo>.py` le corresponde un `src/actions/<Modulo>_actions.py` con el mismo `<Modulo>`. Ejemplo: `tests/equipo1/test_Metricas.py` → `src/actions/Metricas_actions.py`. Como `src/actions/` lo comparten los 3 equipos, los nombres de módulo no se pueden repetir entre equipos (si chocan, ponles prefijo, p. ej. `Equipo2Login`).
+**Módulos:** hay 14, que son los del test plan en Notion: Auth (01), Navegacion (02), Dashboard (03), Campanas (04), Catalogo (05), RegistroAcciones (06), Auditoria (07), Tienda (08), Feed (09), Notificaciones (10), Clanes (11), Leaderboard (12), Perfil (13) y Onboarding (14). Mientras no esté hecho el reparto, viven en `tests/<Modulo>/`. Después se mueven completos a `tests/equipoN/<Modulo>/`. Los nombres de las carpetas no llevan acentos ni ñ. Hasta el reparto, los tests usan `EE = 00` de forma provisional (p. ej. `test_00_01_006_checkLogout`). `tests/Auth/` es el módulo de referencia ya implementado.
+
+**Regla 1:1:** a cada `test_<Modulo>.py` le corresponde un `src/actions/<Modulo>_actions.py` con el mismo `<Modulo>`. Ejemplo: `tests/equipo1/test_Metricas.py` → `src/actions/Metricas_actions.py`. Como `src/actions/` lo comparten los 3 equipos, los nombres de módulo no se pueden repetir entre equipos (si chocan, ponles prefijo, p. ej. `Equipo2Login`).
 
 ## Capas y convenciones
 
@@ -134,6 +148,60 @@ Una sola clase `Locators` (alias `Locs`) para toda la app:
 - **`@staticmethod` parametrizables** que regresan el string del XPath/CSS, con nombre `<tag>_with_<criterio>(valor)`: `span_with_text`, `div_with_class`, `link_with_aria`, `button_with_text`, `div_with_role`, ... Se usa `contains(...)` para tolerar clases y textos parciales, y `|` para unir alternativas.
 - Antes de crear un locator nuevo, revisa si ya existe uno genérico que sirva. Si el frontend tiene `data-testid`, úsalo antes que texto o clases (`element_with_test_id`).
 
+## Sesión: login sin pasar por Microsoft en cada test
+
+Los tests no usan la pantalla de login. `common_actions.login_as(page, role)` consigue tokens **reales** del backend y los inyecta en el `sessionStorage` del frontend con `page.add_init_script`, usando las mismas llaves que `GreenITESO-Frontend/src/lib/auth/session.ts`. Es lo mismo que hacen los tests del frontend, pero con tokens que el backend sí acepta.
+
+```python
+def test_07_01_002_checkPendingEvidence(page: Page) -> bool:
+    login_as(page, "admin")   # antes de navegar; "student", "admin", "leader" o email="..."
+    go_to(page, "/audit")
+    ...
+```
+
+Hay dos modos, que se eligen con `AUTH_MODE` en `.env`:
+
+| Modo | Para qué | Cómo consigue los tokens |
+|---|---|---|
+| `refresh` (default) | Ambientes desplegados (prod) | Una persona inicia sesión con Microsoft **una vez por usuario** con `uv run python -m src.utils.auth --role <rol>`. Se guarda su refresh token y en cada corrida se canjea en `/api/v1/auth/refresh/`. |
+| `mock` | Stack local | `POST /api/v1/auth/login/` con `id_token = "mock:<email>"`. El backend solo lo acepta con `MICROSOFT_AUTH_MODE=mock` (local, sin desplegar). |
+
+**Detalles del modo `refresh`:**
+- Los refresh tokens **se pueden usar una sola vez** y duran **7 días**. Cada renovación guarda el token nuevo en `~/.greeniteso-e2e/auth/<email>.json`, que está fuera del repo; se puede cambiar con `AUTH_STATE_DIR`. Si pasan más de 7 días sin corridas, o alguien usa el token en otro lado, hay que repetir el login manual. El error lo dice.
+- Los workers de xdist comparten ese archivo con un lock, así que solo uno canjea el token y los demás reusan el access token.
+- El navegador recibe el access token y un refresh token **de relleno**. Si el frontend canjeara el token real, lo invalidaría para la siguiente corrida.
+- No se guardan contraseñas. En prod no existe el login `mock:`, por eso este modo usa cuentas reales de @iteso.mx.
+- El rol ADMIN se asigna en la BD de ese ambiente con `manage.py assign_user_role <email> ADMIN`, y eso lo tiene que hacer alguien con acceso.
+
+**En los dos modos:**
+- La sesión se inyecta una sola vez por pestaña. Así, el test de "Cerrar sesión" funciona: después de salir, la sesión no regresa al navegar.
+- Los tests que necesitan entrar **sin sesión** (como el de la pantalla de login) simplemente no llaman `login_as`.
+- El rol de líder de clan no es global: el usuario `leader` tiene que tener su clan como parte del setup del módulo.
+- `login_as` marca el recorrido guiado como visto (en `localStorage`) para que no tape la UI. Solo los tests del recorrido usan `login_as(page, role, skip_tour=False)`.
+
+## Datos de prueba en prod: marcar y limpiar
+
+Las pruebas corren contra prod, así que **todo dato que cree un test lleva el marcador de la corrida**. Se genera con `src/utils/test_data.py`:
+
+```python
+from src.utils.test_data import unique_name
+
+name = unique_name("Clan", max_length=100)    # "E2E-2611061530-ab12 Clan 1"
+```
+
+- Úsalo en todo texto que identifique lo creado: contenido de posts, nombre de clan, título de campaña o propuesta, bio y nickname. Respeta los límites del backend con `max_length`: nickname 50, clan 100, campaña 150 y bio 500.
+- Hay un solo marcador por corrida, el mismo en todos los workers. Al terminar, `conftest.py` llama `cleanup_run` una vez desde el proceso controlador, y este usa la API con los usuarios de prueba para:
+  - borrar los posts marcados;
+  - disolver los clanes marcados;
+  - rechazar las propuestas de campaña pendientes que estén marcadas;
+  - iniciar y finalizar las campañas marcadas, porque no se pueden borrar;
+  - rechazar los action logs que crearon los usuarios de prueba durante la corrida, lo que revierte sus puntos;
+  - restaurar el perfil de cada usuario de prueba (bio, preferencias, visibilidad y avatar) a como estaba antes de la corrida.
+- Al iniciar, también limpia los marcadores de corridas que no terminaron y tienen más de 3 horas.
+- El resumen sale en la terminal y en `reporting/logs/cleanup_<marcador>.json`. Para depurar sin limpiar, usa `E2E_CLEANUP=false`.
+- **Lo que no se puede deshacer:** los canjes en la tienda, las campañas finalizadas (quedan en el historial), las notificaciones que les llegan a usuarios reales y el costo de cambiar el nickname. Los tests que hacen esto van solo en `full`, y hay que evitar que interactúen con usuarios reales; por ejemplo, no enviar solicitudes a clanes ajenos.
+- Si un test crea algo que la limpieza no cubre, agrega el paso en `test_data.py`. No lo dejes al aire.
+
 ## Configuración y fixtures
 
 - `conftest.py` configura `pytest-playwright` (headless, slow_mo, `base_url`, viewport, timeouts) con lo que hay en `environment.py`. El fixture `page` ya trae los timeouts default.
@@ -146,8 +214,8 @@ Una sola clase `Locators` (alias `Locs`) para toda la app:
 
 - **Sanity diario:** cron `H 6 * * *` en `America/Mexico_City`. Usa los defaults, o sea `SUITE=sanity`.
 - **Full en release:** el job se dispara por la API `buildWithParameters` con `SUITE=full`.
-- Parámetros: `SUITE`, `BASE_URL`, `BROWSER`, `WORKERS` (módulos en paralelo, default 4) y `EXTRA_PYTEST_ARGS`.
-- Necesita los plugins Pipeline, Credentials Binding, JUnit y Allure (con la tool `allure` configurada), y una credencial *Username with password* con id `greeniteso-test-user`.
+- Parámetros: `SUITE`, `BASE_URL` (default: prod), `API_BASE_URL`, `AUTH_MODE`, `BROWSER`, `WORKERS` (módulos en paralelo, default 4) y `EXTRA_PYTEST_ARGS`.
+- Necesita los plugins Pipeline, JUnit y Allure (con la tool `allure` configurada), y las sesiones de los usuarios de prueba guardadas en el agente: el login manual se corre una vez en el agente con el usuario de Jenkins.
 - Publica JUnit, el reporte de Allure y guarda screenshots y logs como artifacts.
 
 **Trigger automático desde el frontend (opcional):** `ci/frontend-release-trigger.yml` se copia al repo de frontend como `.github/workflows/trigger-e2e-full.yml`. Cuando se publica un release (que no sea prerelease), llama a Jenkins con `SUITE=full`. Para esto Jenkins tiene que ser accesible desde internet. Mientras no haya un servidor, el build full se lanza a mano desde Jenkins con *Build with Parameters → SUITE=full*.

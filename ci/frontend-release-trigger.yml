@@ -7,7 +7,8 @@
 #   JENKINS_JOB        nombre del job, p. ej. GreenITESO-Testing
 #   JENKINS_USER       usuario de Jenkins
 #   JENKINS_API_TOKEN  API token del usuario (Jenkins > usuario > Configure > API Token)
-#   E2E_BASE_URL       URL de prod a probar
+#
+# El job ya tiene la URL de prod como default de BASE_URL, así que solo se manda SUITE=full.
 
 name: Trigger E2E full suite
 
@@ -26,10 +27,8 @@ jobs:
           JENKINS_JOB: ${{ secrets.JENKINS_JOB }}
           JENKINS_USER: ${{ secrets.JENKINS_USER }}
           JENKINS_API_TOKEN: ${{ secrets.JENKINS_API_TOKEN }}
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
         run: |
           curl -fsS -X POST \
             -u "${JENKINS_USER}:${JENKINS_API_TOKEN}" \
             "${JENKINS_URL}/job/${JENKINS_JOB}/buildWithParameters" \
-            --data-urlencode "SUITE=full" \
-            --data-urlencode "BASE_URL=${E2E_BASE_URL}"
+            --data-urlencode "SUITE=full"

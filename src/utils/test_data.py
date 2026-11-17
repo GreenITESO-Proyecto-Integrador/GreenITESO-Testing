@@ -1,0 +1,339 @@
+"""Datos de prueba marcados y limpieza al final de la corrida (pruebas contra prod).
+
+Todo lo que un test crea (posts, clanes, campañas, nicknames, ...) debe llevar el marcador de la
+corrida, que se obtiene con ``unique_name("Clan")`` → ``"E2E-2611061530-ab12 Clan 1"``. Al terminar,
+``cleanup_run`` (lo llama conftest.py en el proceso controlador, una vez por corrida) usa la API con
+las sesiones de los usuarios de prueba para quitar lo que tenga el marcador:
+
+- posts del feed marcados → DELETE (como admin)
+- clanes marcados → disolver (como su líder)
+- propuestas de campaña marcadas y pendientes → rechazar (como admin)
+- campañas marcadas → iniciar y finalizar (no hay DELETE)
+- action logs de los usuarios de prueba creados durante la corrida → rechazar (como admin; revierte puntos)
+- perfil de cada usuario de prueba (bio, preferencias, visibilidad, avatar) → se restaura a como estaba
+
+Al iniciar también se limpian los marcadores de corridas viejas que no terminaron (más de
+``_STALE_AFTER`` horas), sin tocar los de otra corrida que pueda estar en curso.
+
+Lo que NO se puede deshacer: canjes en la tienda, campañas finalizadas (quedan en el historial),
+notificaciones que les llegaron a usuarios reales, el costo de cambiar el nickname.
+"""
+
+import json
+import re
+import secrets
+import time
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
+from itertools import count
+from pathlib import Path
+from typing import Any
+
+from playwright.sync_api import APIRequestContext, sync_playwright
+
+from src.configs import environment as env
+from src.utils.auth import get_session
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+_MARKER_PREFIX = "E2E-"
+_RUN_TS_FORMAT = "%y%m%d%H%M"
+_MARKER_RE = re.compile(rf"{_MARKER_PREFIX}(\d{{10}})-[0-9a-f]{{4}}")
+_STALE_AFTER = timedelta(hours=3)
+_MAX_PAGES = 20
+# Margen para el redondeo de created_at y la diferencia de reloj entre el agente y el servidor.
+_CLOCK_MARGIN = timedelta(minutes=2)
+_REJECTION_REASON = "Limpieza automática de datos de prueba E2E"
+_PROFILE_FIELDS = ("bio", "preferences", "visibility", "avatar_url")
+
+_RUN_ID: str | None = None
+_COUNTER = count(1)
+
+
+# --- marcador de la corrida -----------------------------------------------------------------
+
+def new_run_id() -> str:
+    """Create a run marker such as ``E2E-2611061530-ab12`` (UTC timestamp + random suffix)."""
+    return f"{_MARKER_PREFIX}{datetime.now(UTC).strftime(_RUN_TS_FORMAT)}-{secrets.token_hex(2)}"
+
+
+def set_run_id(run_id: str) -> None:
+    """Fix the run marker for this process (the controller passes it to every xdist worker)."""
+    global _RUN_ID
+    _RUN_ID = run_id
+
+
+def run_id() -> str:
+    """Return this run's marker, creating one if the process has none yet."""
+    if _RUN_ID is None:
+        set_run_id(new_run_id())
+    return _RUN_ID  # type: ignore[return-value]
+
+
+def unique_name(label: str, *, max_length: int = 100) -> str:
+    """Build a unique, marked name for test data: ``"<marker> <label> <n>"`` cut to `max_length`.
+
+    Límites del backend: nickname 50, nombre de clan 100, título de campaña 150, bio 500.
+    """
+    suffix = f" {next(_COUNTER)}"
+    base = f"{run_id()} {label}"
+    return base[: max_length - len(suffix)] + suffix
+
+
+def is_marked(text: str | None, *, marker: str | None = None) -> bool:
+    """Tell whether `text` carries `marker` (or any E2E marker when `marker` is None)."""
+    if not text:
+        return False
+    return marker in text if marker else bool(_MARKER_RE.search(text))
+
+
+def _is_stale_marker(text: str | None, *, now: datetime) -> bool:
+    match = _MARKER_RE.search(text or "")
+    if not match:
+        return False
+    started = datetime.strptime(match.group(1), _RUN_TS_FORMAT).replace(tzinfo=UTC)
+    return now - started > _STALE_AFTER
+
+
+# --- cliente de la API ----------------------------------------------------------------------
+
+class _Api:
+    """Thin authenticated client: one APIRequestContext, a bearer token per test user."""
+
+    def __init__(self, request: APIRequestContext) -> None:
+        self.request = request
+        self.tokens: dict[str, str] = {}
+        for role, email in env.TEST_USERS.items():
+            try:
+                self.tokens[role] = get_session(request, email)["access"]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Limpieza: sin sesión para %s (%s): %s", role, email, exc)
+
+    def call(self, role: str, method: str, path: str, *, data: dict | None = None, params: dict | None = None):
+        if role not in self.tokens:
+            raise RuntimeError(f"no hay sesión guardada de {role} ({env.TEST_USERS[role]})")
+        url = env.API_BASE_URL.rstrip("/") + path
+        headers = {"Authorization": f"Bearer {self.tokens[role]}"}
+        return self.request.fetch(url, method=method, headers=headers, data=data, params=params)
+
+    def pages(self, role: str, path: str, params: dict | None = None) -> Iterator[dict]:
+        """Yield every item of a list endpoint, paginated (DRF ``results``/``next``) or not."""
+        for page in range(1, _MAX_PAGES + 1):
+            response = self.call(role, "GET", path, params={**(params or {}), "page": page})
+            if not response.ok:
+                logger.debug("GET %s página %s → %s", path, page, response.status)
+                return
+            body = response.json()
+            if isinstance(body, list):
+                yield from body
+                return
+            yield from body.get("results", [])
+            if not body.get("next"):
+                return
+
+
+# --- pasos de limpieza ----------------------------------------------------------------------
+
+class _Report:
+    def __init__(self) -> None:
+        self.done: dict[str, int] = {}
+        self.failed: list[str] = []
+
+    def ok(self, kind: str) -> None:
+        self.done[kind] = self.done.get(kind, 0) + 1
+
+    def fail(self, what: str) -> None:
+        logger.warning("Limpieza: no se pudo %s", what)
+        self.failed.append(what)
+
+
+def _clean_feed(api: _Api, should_clean: Callable[[str | None], bool], report: _Report) -> None:
+    posts = [p for p in api.pages("admin", "/api/v1/feed/") if should_clean(p.get("content"))]
+    for post in posts:
+        response = api.call("admin", "DELETE", f"/api/v1/feed/{post['id']}/")
+        if response.ok or response.status == 404:
+            report.ok("posts borrados")
+        else:
+            report.fail(f"borrar el post {post['id']} ({response.status})")
+
+
+def _clean_clans(api: _Api, should_clean: Callable[[str | None], bool], report: _Report) -> None:
+    clans = [c for c in api.pages("admin", "/api/v1/clans/", {"search": _MARKER_PREFIX}) if should_clean(c.get("name"))]
+    for clan in clans:
+        # Solo el líder actual puede disolverlo; se prueba con cada usuario de prueba.
+        for role in api.tokens:
+            response = api.call(role, "DELETE", f"/api/v1/clans/{clan['id']}/")
+            if response.ok or response.status == 404:
+                report.ok("clanes disueltos")
+                break
+        else:
+            report.fail(f"disolver el clan {clan['name']!r}")
+
+
+def _clean_campaigns(api: _Api, should_clean: Callable[[str | None], bool], report: _Report) -> None:
+    for proposal in api.pages("admin", "/api/v1/campaigns/proposals/", {"approval_status": "PENDING"}):
+        if not should_clean(proposal.get("title")):
+            continue
+        response = api.call(
+            "admin", "POST", f"/api/v1/campaigns/proposals/{proposal['id']}/reject/",
+            data={"rejection_reason": _REJECTION_REASON},
+        )
+        if response.ok:
+            report.ok("propuestas rechazadas")
+        else:
+            report.fail(f"rechazar la propuesta {proposal.get('title')!r} ({response.status})")
+
+    seen: set[str] = set()
+    for role in api.tokens:
+        for campaign in api.pages(role, "/api/v1/campaigns/"):
+            if campaign["id"] in seen or not should_clean(campaign.get("title")):
+                continue
+            if campaign.get("status") == "FINISHED" or not campaign.get("can_manage"):
+                continue
+            seen.add(campaign["id"])
+            steps = ["start", "finish"] if campaign.get("status") == "PROMOTION" else ["finish"]
+            for step in steps:
+                response = api.call(role, "POST", f"/api/v1/campaigns/{campaign['id']}/{step}/")
+                if not response.ok:
+                    report.fail(f"{step} la campaña {campaign.get('title')!r} ({response.status})")
+                    break
+            else:
+                report.ok("campañas finalizadas")
+
+
+def _clean_action_logs(api: _Api, since: datetime, report: _Report) -> None:
+    for role in api.tokens:
+        for log in api.pages(role, "/api/v1/action-logs/mine/"):
+            created = datetime.fromisoformat(log["created_at"])
+            if created < since or log.get("status") == "REJECTED":
+                continue
+            response = api.call(
+                "admin", "PATCH", f"/api/v1/action-logs/{log['id']}/audit/",
+                data={"status": "REJECTED", "rejection_reason": _REJECTION_REASON},
+            )
+            # 409: los puntos ya se gastaron (p. ej. en la tienda) y no se pueden revertir.
+            if response.ok:
+                report.ok("action logs rechazados")
+            else:
+                report.fail(f"rechazar el action log {log['id']} de {role} ({response.status})")
+
+
+# --- perfil: foto antes de la corrida y restauración al final -------------------------------
+
+def _profile_snapshot_file(role: str) -> Path:
+    return env.AUTH_STATE_DIR / f"{env.TEST_USERS[role].lower()}.profile.json"
+
+
+def _snapshot_profiles(api: _Api, report: _Report) -> None:
+    for role in api.tokens:
+        path = _profile_snapshot_file(role)
+        if path.exists():
+            # Una corrida anterior no terminó: primero regresa el perfil a como estaba.
+            _restore_profile(api, role, report)
+        response = api.call(role, "GET", "/api/v1/profile/me/")
+        if not response.ok:
+            report.fail(f"leer el perfil de {role} ({response.status})")
+            continue
+        body = response.json()
+        path.write_text(json.dumps({k: body.get(k) for k in _PROFILE_FIELDS if k in body}), encoding="utf-8")
+
+
+def _restore_profile(api: _Api, role: str, report: _Report) -> None:
+    path = _profile_snapshot_file(role)
+    if not path.exists():
+        return
+    snapshot = json.loads(path.read_text(encoding="utf-8"))
+    response = api.call(role, "PATCH", "/api/v1/profile/me/", data=snapshot)
+    if response.ok:
+        path.unlink()
+        report.ok("perfiles restaurados")
+    else:
+        report.fail(f"restaurar el perfil de {role} ({response.status}: {response.text()[:200]})")
+
+
+# --- punto de entrada -----------------------------------------------------------------------
+
+def _with_api(action: Callable[[_Api], None], report: _Report) -> None:
+    with sync_playwright() as p:
+        request = p.request.new_context()
+        try:
+            api = _Api(request)
+            if not api.tokens:
+                report.fail("limpiar: no hay sesiones guardadas de los usuarios de prueba")
+                return
+            action(api)
+        finally:
+            request.dispose()
+
+
+def _require_admin(api: _Api, report: _Report) -> bool:
+    """Feed, clans, campaigns and action logs are listed/cleaned as admin; skip them all at once without it."""
+    if "admin" in api.tokens:
+        return True
+    report.fail("limpiar feed, clanes, campañas y action logs: falta la sesión de admin")
+    return False
+
+
+def _run_step(report: _Report, name: str, step: Callable[[], None]) -> None:
+    try:
+        step()
+    except Exception as exc:  # noqa: BLE001  (la limpieza nunca debe tumbar la corrida)
+        report.fail(f"{name}: {exc}")
+
+
+def prepare_run() -> dict[str, Any]:
+    """Before the run: clean data of stale, unfinished runs and snapshot the test users' profiles."""
+    report = _Report()
+    now = datetime.now(UTC)
+
+    def stale(text: str | None) -> bool:
+        return _is_stale_marker(text, now=now)
+
+    def action(api: _Api) -> None:
+        _run_step(report, "restaurar/guardar perfiles", lambda: _snapshot_profiles(api, report))
+        if _require_admin(api, report):
+            _run_step(report, "limpiar feed viejo", lambda: _clean_feed(api, stale, report))
+            _run_step(report, "limpiar clanes viejos", lambda: _clean_clans(api, stale, report))
+            _run_step(report, "limpiar campañas viejas", lambda: _clean_campaigns(api, stale, report))
+
+    _run_step(report, "preparar la corrida", lambda: _with_api(action, report))
+    logger.info("Preparación E2E: %s; fallas: %s", report.done or "nada que limpiar", len(report.failed))
+    return {"done": report.done, "failed": report.failed}
+
+
+def cleanup_run(marker: str, *, started_at: float) -> dict[str, Any]:
+    """After the run: remove everything carrying `marker` and restore the test users' profiles."""
+    report = _Report()
+    since = datetime.fromtimestamp(started_at, UTC) - _CLOCK_MARGIN
+
+    def mine(text: str | None) -> bool:
+        return is_marked(text, marker=marker)
+
+    def action(api: _Api) -> None:
+        if _require_admin(api, report):
+            _run_step(report, "limpiar feed", lambda: _clean_feed(api, mine, report))
+            _run_step(report, "limpiar clanes", lambda: _clean_clans(api, mine, report))
+            _run_step(report, "limpiar campañas", lambda: _clean_campaigns(api, mine, report))
+            _run_step(report, "rechazar action logs", lambda: _clean_action_logs(api, since, report))
+        for role in api.tokens:
+            _run_step(report, f"restaurar perfil de {role}", lambda r=role: _restore_profile(api, r, report))
+
+    t0 = time.monotonic()
+    _run_step(report, "limpiar la corrida", lambda: _with_api(action, report))
+    summary = {
+        "marker": marker,
+        "done": report.done,
+        "failed": report.failed,
+        "seconds": round(time.monotonic() - t0, 1),
+        "irreversible": [
+            "canjes en la tienda",
+            "campañas finalizadas (quedan en el historial)",
+            "notificaciones enviadas a usuarios reales",
+            "costo de cambiar el nickname",
+        ],
+    }
+    env.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    (env.LOGS_DIR / f"cleanup_{marker}.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), "utf-8")
+    logger.info("Limpieza E2E de %s: %s; fallas: %s", marker, report.done or "nada", len(report.failed))
+    return summary

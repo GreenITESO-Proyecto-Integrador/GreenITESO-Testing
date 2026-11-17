@@ -37,3 +37,8 @@ log_cli_level = "INFO"
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# Convención del proyecto: test_<Modulo>.py y <Modulo>_actions.py con <Modulo> en CamelCase.
+"tests/**/test_*.py" = ["N999"]
+"src/actions/*_actions.py" = ["N999"]

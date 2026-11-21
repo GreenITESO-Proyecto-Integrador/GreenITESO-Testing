@@ -10,13 +10,16 @@ Somos 3 equipos. **Ningún equipo prueba su propio trabajo**: cada equipo escrib
 brew install uv                         # o: curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync                                 # crea .venv con las dependencias de uv.lock
 uv run playwright install chromium      # navegadores de Playwright
-cp .env.example .env                    # BASE_URL, AUTH_MODE y los correos de prueba
+if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi  # no sobrescribir
+# Revisa y configura BASE_URL, AUTH_MODE, cuentas y E2E_CLEANUP antes de iniciar sesión o probar.
 uv run python -m src.utils.auth --role student   # login manual con Microsoft, una vez por rol
 uv run python -m src.utils.auth --role admin
 uv run python -m src.utils.auth --role leader
 ```
 
 Por default, las pruebas corren contra la **versión desplegada en producción** (`BASE_URL` en `.env.example`). La API está en el mismo dominio, porque nginx manda `/api/` al backend.
+
+`E2E_CLEANUP` también está activado por defecto: iniciar o terminar una corrida puede modificar datos mediante la API, incluso antes de ejecutar el primer caso. Revisa el destino y las cuentas, usa un ambiente aislado para pruebas que cambien datos y acuerda el alcance antes de usar un ambiente compartido. Desactivar la limpieza no convierte los casos en pruebas de solo lectura.
 
 - Para agregar una dependencia usa `uv add <paquete>` (o `uv add --dev <paquete>`), **nunca** `pip install`. Sube `pyproject.toml` y `uv.lock` en el mismo commit.
 - `.env` no se sube al repo. Las variables se leen solo desde `src/configs/environment.py`; no uses `os.getenv` en ningún otro archivo.

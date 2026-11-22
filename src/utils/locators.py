@@ -30,6 +30,21 @@ class Locators:
     # --- Dashboard (pages/Dashboard) ---
     DASHBOARD_IMPACT_TITLE = "//h2[normalize-space(.)='Tu impacto']"
 
+    # --- Leaderboard (pages/Leaderboard, components/shared/Pagination.tsx) ---
+    LEADERBOARD_TITLE = "//main//h1[normalize-space(.)='Tablas de clasificación']"
+    LEADERBOARD_TABS = "//*[@role='tablist'][@aria-label='Tablas de clasificación']//button[@role='tab']"
+    LEADERBOARD_TABLE = "//main//table"
+    LEADERBOARD_ROWS = "//main//table/tbody/tr"
+    LEADERBOARD_NAME_HEADER = "//main//table/thead//th[2]"
+    LEADERBOARD_LOADING = "//*[@role='status'][contains(normalize-space(.), 'Cargando clasificación')]"
+    LEADERBOARD_EMPTY_TITLE = "//main//h2[normalize-space(.)='Aún no hay clasificación']"
+    LEADERBOARD_ERROR_TITLE = "//main//h2[normalize-space(.)='No se pudo cargar la clasificación']"
+    LEADERBOARD_RETRY_BUTTON = "//main//button[normalize-space(.)='Reintentar']"
+    LEADERBOARD_PAGER = "//nav[starts-with(@aria-label, 'Paginación de')]"
+    LEADERBOARD_PAGER_PROGRESS = "//nav[starts-with(@aria-label, 'Paginación de')]//*[@role='progressbar']"
+    LEADERBOARD_PAGER_PREV = "//nav[starts-with(@aria-label, 'Paginación de')]//button[@aria-label='Página anterior']"
+    LEADERBOARD_PAGER_NEXT = "//nav[starts-with(@aria-label, 'Paginación de')]//button[@aria-label='Página siguiente']"
+
     # --- Perfil (pages/Profile) ---
     PROFILE_NAME_TITLE = "//main//h1"
 
@@ -45,6 +60,19 @@ class Locators:
     @staticmethod
     def element_with_test_id(test_id: str) -> str:
         return f"[data-testid='{test_id}']"
+
+    @staticmethod
+    def leaderboard_tab_with_text(text: str) -> str:
+        return f"//*[@role='tablist']//button[@role='tab'][normalize-space(.)='{text}']"
+
+    @staticmethod
+    def leaderboard_cell_with_position(row: int, column: int) -> str:
+        """Cell of the ranking table; `row` and `column` are 1-based."""
+        return f"//main//table/tbody/tr[{row}]/td[{column}]"
+
+    @staticmethod
+    def leaderboard_row_with_name(name: str) -> str:
+        return f"//main//table/tbody/tr[.//td[contains(normalize-space(.), '{name}')]]"
 
 
 Locs = Locators

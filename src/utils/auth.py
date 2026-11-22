@@ -16,6 +16,7 @@ import argparse
 import base64
 import fcntl
 import json
+import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -288,10 +289,69 @@ def bootstrap(email: str) -> None:
     print(f"Sesión guardada para {email} (rol {session['user'].get('role')}) en {_session_file(email)}")
 
 
+# Lo que el dueño de la cuenta corre en la consola de DevTools (con sesión iniciada en el sitio).
+DEVTOOLS_SNIPPET = (
+    "copy(JSON.stringify({access: sessionStorage.getItem('greeniteso.access_token'), "
+    "refresh: sessionStorage.getItem('greeniteso.refresh_token'), "
+    "user: JSON.parse(sessionStorage.getItem('greeniteso.user'))}))"
+)
+
+
+def import_session(email: str, raw: str) -> None:
+    """Save a session copied from DevTools for `email`, rotating its refresh token right away.
+
+    Al canjearlo de inmediato, la copia que tiene el dueño (o el chat por donde se mandó) deja de
+    servir y solo este equipo conserva un refresh token válido.
+    """
+    try:
+        pasted = json.loads(raw)
+        refresh, user = pasted["refresh"], pasted["user"]
+    except Exception as exc:
+        raise RuntimeError(f"El texto pegado no es la sesión esperada. En DevTools corre: {DEVTOOLS_SNIPPET}") from exc
+    if not refresh or not isinstance(user, dict):
+        raise RuntimeError("La sesión pegada no trae refresh token o usuario: ¿el dueño tenía la sesión iniciada?")
+    if str(user.get("email", "")).lower() != email.lower():
+        raise RuntimeError(f"La sesión pegada es de {user.get('email')}, se esperaba {email}.")
+
+    with sync_playwright() as p:
+        request = p.request.new_context()
+        try:
+            response = _post_with_throttle_retry(request, _api_url(_REFRESH_PATH), {"refresh": refresh}, "Importar")
+            if not response.ok:
+                raise RuntimeError(
+                    f"El backend rechazó el refresh token ({response.status}): ya se usó, expiró o el dueño "
+                    "cerró sesión. Pídele que inicie sesión de nuevo y copie la sesión otra vez."
+                )
+            body = response.json()
+        finally:
+            request.dispose()
+    session: Session = {"access": body["access"], "refresh": body.get("refresh", refresh), "user": user}
+    with _locked(email):
+        _write_session_file(email, session)
+    print(f"Sesión importada para {email} (rol {user.get('role')}) en {_session_file(email)}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Guarda la sesión de un usuario de prueba (login manual).")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--role", choices=sorted(env.TEST_USERS), help="rol de env.TEST_USERS")
     group.add_argument("--email", help="correo del usuario de prueba")
+    parser.add_argument(
+        "--import",
+        dest="import_session",
+        action="store_true",
+        help="en vez de abrir el navegador, lee de stdin la sesión copiada en DevTools por el dueño de la cuenta",
+    )
     args = parser.parse_args()
-    bootstrap(args.email or env.TEST_USERS[args.role])
+    target = args.email or env.TEST_USERS[args.role]
+    if args.import_session:
+        if sys.stdin.isatty():
+            print(f"Pega la sesión de {target} (lo que copió el snippet de DevTools) y presiona Enter:")
+            raw = input()
+        else:
+            raw = sys.stdin.read()  # p. ej. ``pbpaste | python -m src.utils.auth --role admin --import``
+        if not raw.strip():
+            raise SystemExit("No llegó ninguna sesión. Copia la sesión y corre: pbpaste | <este comando>")
+        import_session(target, raw.strip())
+    else:
+        bootstrap(target)

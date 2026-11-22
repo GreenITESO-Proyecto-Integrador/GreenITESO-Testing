@@ -6,33 +6,40 @@ corrida, que se obtiene con ``unique_name("Clan")`` → ``"E2E-2611061530-ab12 C
 las sesiones de los usuarios de prueba para quitar lo que tenga el marcador:
 
 - posts del feed marcados → DELETE (como admin)
-- clanes marcados → disolver (como su líder)
 - propuestas de campaña marcadas y pendientes → rechazar (como admin)
 - campañas marcadas → iniciar y finalizar (no hay DELETE)
+- clanes marcados → disolver (como su líder); después de las campañas, porque al disolverlo
+  se ocultan sus campañas PRIVATE
+- membresías temporales (``register_membership``: un usuario de prueba que se unió a un clan sin
+  marcador) → salir del clan, después de las campañas
 - action logs de los usuarios de prueba creados durante la corrida → rechazar (como admin; revierte puntos)
+- notificaciones marcadas (mensaje o título) → DELETE, soft delete (cada usuario de prueba); al final,
+  porque rechazar propuestas y disolver clanes también genera notificaciones con el marcador
 - perfil de cada usuario de prueba (bio, preferencias, visibilidad, avatar) → se restaura a como estaba
 
 Al iniciar también se limpian los marcadores de corridas viejas que no terminaron (más de
 ``_STALE_AFTER`` horas), sin tocar los de otra corrida que pueda estar en curso.
 
 Lo que NO se puede deshacer: canjes en la tienda, campañas finalizadas (quedan en el historial),
-notificaciones que les llegaron a usuarios reales, el costo de cambiar el nickname.
+notificaciones que les llegaron a usuarios reales, el costo de cambiar el nickname, propuestas de
+campaña rechazadas (no hay DELETE; quedan como REJECTED) y las imágenes del feed que se subieron pero
+nunca se adjuntaron a un post (las de un post se borran junto con él).
 """
 
 import json
 import re
 import secrets
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from itertools import count
 from pathlib import Path
 from typing import Any
 
-from playwright.sync_api import APIRequestContext, sync_playwright
+from playwright.sync_api import sync_playwright
 
 from src.configs import environment as env
-from src.utils.auth import get_session
+from src.utils.api import ApiClient
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -76,7 +83,9 @@ def unique_name(label: str, *, max_length: int = 100) -> str:
 
     Límites del backend: nickname 50, nombre de clan 100, título de campaña 150, bio 500.
     """
-    suffix = f" {next(_COUNTER)}"
+    # El contador es por proceso: con xdist se le antepone el worker para no repetir nombres entre módulos.
+    worker = f"{env.XDIST_WORKER}-" if env.XDIST_WORKER else ""
+    suffix = f" {worker}{next(_COUNTER)}"
     base = f"{run_id()} {label}"
     return base[: max_length - len(suffix)] + suffix
 
@@ -96,43 +105,6 @@ def _is_stale_marker(text: str | None, *, now: datetime) -> bool:
     return now - started > _STALE_AFTER
 
 
-# --- cliente de la API ----------------------------------------------------------------------
-
-class _Api:
-    """Thin authenticated client: one APIRequestContext, a bearer token per test user."""
-
-    def __init__(self, request: APIRequestContext) -> None:
-        self.request = request
-        self.tokens: dict[str, str] = {}
-        for role, email in env.TEST_USERS.items():
-            try:
-                self.tokens[role] = get_session(request, email)["access"]
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Limpieza: sin sesión para %s (%s): %s", role, email, exc)
-
-    def call(self, role: str, method: str, path: str, *, data: dict | None = None, params: dict | None = None):
-        if role not in self.tokens:
-            raise RuntimeError(f"no hay sesión guardada de {role} ({env.TEST_USERS[role]})")
-        url = env.API_BASE_URL.rstrip("/") + path
-        headers = {"Authorization": f"Bearer {self.tokens[role]}"}
-        return self.request.fetch(url, method=method, headers=headers, data=data, params=params)
-
-    def pages(self, role: str, path: str, params: dict | None = None) -> Iterator[dict]:
-        """Yield every item of a list endpoint, paginated (DRF ``results``/``next``) or not."""
-        for page in range(1, _MAX_PAGES + 1):
-            response = self.call(role, "GET", path, params={**(params or {}), "page": page})
-            if not response.ok:
-                logger.debug("GET %s página %s → %s", path, page, response.status)
-                return
-            body = response.json()
-            if isinstance(body, list):
-                yield from body
-                return
-            yield from body.get("results", [])
-            if not body.get("next"):
-                return
-
-
 # --- pasos de limpieza ----------------------------------------------------------------------
 
 class _Report:
@@ -148,7 +120,7 @@ class _Report:
         self.failed.append(what)
 
 
-def _clean_feed(api: _Api, should_clean: Callable[[str | None], bool], report: _Report) -> None:
+def _clean_feed(api: ApiClient, should_clean: Callable[[str | None], bool], report: _Report) -> None:
     posts = [p for p in api.pages("admin", "/api/v1/feed/") if should_clean(p.get("content"))]
     for post in posts:
         response = api.call("admin", "DELETE", f"/api/v1/feed/{post['id']}/")
@@ -158,7 +130,7 @@ def _clean_feed(api: _Api, should_clean: Callable[[str | None], bool], report: _
             report.fail(f"borrar el post {post['id']} ({response.status})")
 
 
-def _clean_clans(api: _Api, should_clean: Callable[[str | None], bool], report: _Report) -> None:
+def _clean_clans(api: ApiClient, should_clean: Callable[[str | None], bool], report: _Report) -> None:
     clans = [c for c in api.pages("admin", "/api/v1/clans/", {"search": _MARKER_PREFIX}) if should_clean(c.get("name"))]
     for clan in clans:
         # Solo el líder actual puede disolverlo; se prueba con cada usuario de prueba.
@@ -171,7 +143,7 @@ def _clean_clans(api: _Api, should_clean: Callable[[str | None], bool], report: 
             report.fail(f"disolver el clan {clan['name']!r}")
 
 
-def _clean_campaigns(api: _Api, should_clean: Callable[[str | None], bool], report: _Report) -> None:
+def _clean_campaigns(api: ApiClient, should_clean: Callable[[str | None], bool], report: _Report) -> None:
     for proposal in api.pages("admin", "/api/v1/campaigns/proposals/", {"approval_status": "PENDING"}):
         if not should_clean(proposal.get("title")):
             continue
@@ -202,7 +174,22 @@ def _clean_campaigns(api: _Api, should_clean: Callable[[str | None], bool], repo
                 report.ok("campañas finalizadas")
 
 
-def _clean_action_logs(api: _Api, since: datetime, report: _Report) -> None:
+def _clean_notifications(api: ApiClient, should_clean: Callable[[str | None], bool], report: _Report) -> None:
+    """Soft-delete the notifications that carry the marker (no admin needed; each user sees its own)."""
+    for role in api.tokens:
+        marked = [
+            n for n in api.pages(role, "/api/v1/notifications/")
+            if should_clean(n.get("message")) or should_clean(n.get("title"))
+        ]
+        for notification in marked:
+            response = api.call(role, "DELETE", f"/api/v1/notifications/{notification['id']}/")
+            if response.ok or response.status == 404:
+                report.ok("notificaciones borradas")
+            else:
+                report.fail(f"borrar la notificación {notification['id']} de {role} ({response.status})")
+
+
+def _clean_action_logs(api: ApiClient, since: datetime, report: _Report) -> None:
     for role in api.tokens:
         for log in api.pages(role, "/api/v1/action-logs/mine/"):
             created = datetime.fromisoformat(log["created_at"])
@@ -225,7 +212,7 @@ def _profile_snapshot_file(role: str) -> Path:
     return env.AUTH_STATE_DIR / f"{env.TEST_USERS[role].lower()}.profile.json"
 
 
-def _snapshot_profiles(api: _Api, report: _Report) -> None:
+def _snapshot_profiles(api: ApiClient, report: _Report) -> None:
     for role in api.tokens:
         path = _profile_snapshot_file(role)
         if path.exists():
@@ -239,11 +226,21 @@ def _snapshot_profiles(api: _Api, report: _Report) -> None:
         path.write_text(json.dumps({k: body.get(k) for k in _PROFILE_FIELDS if k in body}), encoding="utf-8")
 
 
-def _restore_profile(api: _Api, role: str, report: _Report) -> None:
+def _restore_profile(api: ApiClient, role: str, report: _Report) -> None:
     path = _profile_snapshot_file(role)
     if not path.exists():
         return
     snapshot = json.loads(path.read_text(encoding="utf-8"))
+    current = api.call(role, "GET", "/api/v1/profile/me/")
+    if current.ok:
+        # Solo se manda lo que cambió: el backend rechaza reenviar avatares externos sin extensión
+        # (p. ej. la foto de Microsoft) aunque sean los mismos que ya tiene.
+        body = current.json()
+        snapshot = {k: v for k, v in snapshot.items() if body.get(k) != v}
+    if not snapshot:
+        path.unlink()
+        report.ok("perfiles sin cambios")
+        return
     response = api.call(role, "PATCH", "/api/v1/profile/me/", data=snapshot)
     if response.ok:
         path.unlink()
@@ -252,13 +249,47 @@ def _restore_profile(api: _Api, role: str, report: _Report) -> None:
         report.fail(f"restaurar el perfil de {role} ({response.status}: {response.text()[:200]})")
 
 
+# --- membresías temporales en clanes ajenos a la corrida -------------------------------------
+
+def _memberships_file(role: str) -> Path:
+    return env.AUTH_STATE_DIR / f"{env.TEST_USERS[role].lower()}.memberships.json"
+
+
+def register_membership(role: str, clan_id: str) -> None:
+    """Record that `role` joined an unmarked clan during the run, so cleanup makes it leave again."""
+    path = _memberships_file(role)
+    clans = set(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else set()
+    clans.add(clan_id)
+    path.write_text(json.dumps(sorted(clans)), encoding="utf-8")
+
+
+def _leave_memberships(api: ApiClient, report: _Report) -> None:
+    for role in api.tokens:
+        path = _memberships_file(role)
+        if not path.exists():
+            continue
+        pending = []
+        for clan_id in json.loads(path.read_text(encoding="utf-8")):
+            response = api.call(role, "POST", f"/api/v1/clans/{clan_id}/leave/")
+            # 400 = ya no es miembro; 404 = el clan ya no existe. En los dos casos no queda nada.
+            if response.ok or response.status in (400, 404):
+                report.ok("membresías temporales dejadas")
+            else:
+                pending.append(clan_id)
+                report.fail(f"{role} no pudo salir del clan {clan_id} ({response.status})")
+        if pending:
+            path.write_text(json.dumps(pending), encoding="utf-8")
+        else:
+            path.unlink()
+
+
 # --- punto de entrada -----------------------------------------------------------------------
 
-def _with_api(action: Callable[[_Api], None], report: _Report) -> None:
+def _with_api(action: Callable[[ApiClient], None], report: _Report) -> None:
     with sync_playwright() as p:
         request = p.request.new_context()
         try:
-            api = _Api(request)
+            api = ApiClient(request)
             if not api.tokens:
                 report.fail("limpiar: no hay sesiones guardadas de los usuarios de prueba")
                 return
@@ -267,7 +298,7 @@ def _with_api(action: Callable[[_Api], None], report: _Report) -> None:
             request.dispose()
 
 
-def _require_admin(api: _Api, report: _Report) -> bool:
+def _require_admin(api: ApiClient, report: _Report) -> bool:
     """Feed, clans, campaigns and action logs are listed/cleaned as admin; skip them all at once without it."""
     if "admin" in api.tokens:
         return True
@@ -290,12 +321,19 @@ def prepare_run() -> dict[str, Any]:
     def stale(text: str | None) -> bool:
         return _is_stale_marker(text, now=now)
 
-    def action(api: _Api) -> None:
+    def action(api: ApiClient) -> None:
         _run_step(report, "restaurar/guardar perfiles", lambda: _snapshot_profiles(api, report))
-        if _require_admin(api, report):
+        # Campañas antes que clanes: al disolver un clan se ocultan sus campañas PRIVATE.
+        has_admin = _require_admin(api, report)
+        if has_admin:
             _run_step(report, "limpiar feed viejo", lambda: _clean_feed(api, stale, report))
-            _run_step(report, "limpiar clanes viejos", lambda: _clean_clans(api, stale, report))
             _run_step(report, "limpiar campañas viejas", lambda: _clean_campaigns(api, stale, report))
+        # Una corrida anterior que no terminó pudo dejar membresías temporales.
+        _run_step(report, "dejar membresías temporales", lambda: _leave_memberships(api, report))
+        if has_admin:
+            _run_step(report, "limpiar clanes viejos", lambda: _clean_clans(api, stale, report))
+        # Al final: rechazar propuestas y disolver clanes también genera notificaciones con el marcador.
+        _run_step(report, "limpiar notificaciones viejas", lambda: _clean_notifications(api, stale, report))
 
     _run_step(report, "preparar la corrida", lambda: _with_api(action, report))
     logger.info("Preparación E2E: %s; fallas: %s", report.done or "nada que limpiar", len(report.failed))
@@ -310,12 +348,19 @@ def cleanup_run(marker: str, *, started_at: float) -> dict[str, Any]:
     def mine(text: str | None) -> bool:
         return is_marked(text, marker=marker)
 
-    def action(api: _Api) -> None:
-        if _require_admin(api, report):
+    def action(api: ApiClient) -> None:
+        # Campañas antes que clanes: al disolver un clan se ocultan sus campañas PRIVATE.
+        has_admin = _require_admin(api, report)
+        if has_admin:
             _run_step(report, "limpiar feed", lambda: _clean_feed(api, mine, report))
-            _run_step(report, "limpiar clanes", lambda: _clean_clans(api, mine, report))
             _run_step(report, "limpiar campañas", lambda: _clean_campaigns(api, mine, report))
+        # Después de finalizar las campañas: salir antes ocultaría las PRIVATE de ese clan.
+        _run_step(report, "dejar membresías temporales", lambda: _leave_memberships(api, report))
+        if has_admin:
+            _run_step(report, "limpiar clanes", lambda: _clean_clans(api, mine, report))
             _run_step(report, "rechazar action logs", lambda: _clean_action_logs(api, since, report))
+        # Al final: rechazar propuestas y disolver clanes también genera notificaciones con el marcador.
+        _run_step(report, "limpiar notificaciones", lambda: _clean_notifications(api, mine, report))
         for role in api.tokens:
             _run_step(report, f"restaurar perfil de {role}", lambda r=role: _restore_profile(api, r, report))
 
@@ -331,6 +376,8 @@ def cleanup_run(marker: str, *, started_at: float) -> dict[str, Any]:
             "campañas finalizadas (quedan en el historial)",
             "notificaciones enviadas a usuarios reales",
             "costo de cambiar el nickname",
+            "propuestas de campaña rechazadas (no hay DELETE; quedan como REJECTED)",
+            "imágenes subidas al feed que no llegaron a un post (las de un post se borran con él)",
         ],
     }
     env.LOGS_DIR.mkdir(parents=True, exist_ok=True)

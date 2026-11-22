@@ -1,0 +1,179 @@
+# E2E contra una rama (dev / preprod) sin desplegarla.
+#
+# Cada vez que el Backend o el Frontend reciben un push en dev o preprod, su workflow
+# (ci/dispatch/trigger-e2e.yml, copiado en cada repo) manda un repository_dispatch aquí. Este job:
+#   1. hace checkout de Backend y Frontend en esa rama (el repo que disparó, en su commit exacto);
+#   2. levanta un stack desechable (ci/stack: Postgres + backend en modo mock + frontend con nginx);
+#   3. crea los usuarios de prueba y corre la suite completa con AUTH_MODE=mock;
+#   4. publica JUnit, Allure, screenshots y logs, y (si hay token) deja el estado en el commit.
+# No toca prod ni ningún ambiente compartido: todo vive y muere en el runner.
+name: E2E - rama
+
+on:
+  repository_dispatch:
+    types: [greeniteso-branch-updated]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Rama de Backend y Frontend a probar"
+        required: true
+        type: choice
+        options: [dev, preprod]
+      suite:
+        description: "Marker de pytest"
+        required: true
+        default: full
+        type: choice
+        options: [full, sanity]
+
+# Un commit nuevo del mismo repo en la misma rama reemplaza la corrida en curso.
+concurrency:
+  group: e2e-${{ github.event.client_payload.branch || inputs.branch }}-${{ github.event.client_payload.repo || 'manual' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ORG: GreenITESO-Proyecto-Integrador
+  BRANCH: ${{ github.event.client_payload.branch || inputs.branch }}
+  SUITE: ${{ github.event.client_payload.suite || inputs.suite || 'full' }}
+  SOURCE_REPO: ${{ github.event.client_payload.repo }}
+  SOURCE_SHA: ${{ github.event.client_payload.sha }}
+  BASE_URL: http://localhost:8080
+  AUTH_MODE: mock
+  TEST_STUDENT_EMAIL: e2e.student@iteso.mx
+  TEST_ADMIN_EMAIL: e2e.admin@iteso.mx
+  TEST_LEADER_EMAIL: e2e.leader@iteso.mx
+  TEST_CAMPAIGN_LEADER_EMAIL: e2e.campaign.leader@iteso.mx
+  # Opcional: PAT con permiso "Commit statuses: write" en Backend y Frontend para dejar ✅/❌ en el commit.
+  HAS_STATUS_TOKEN: ${{ secrets.E2E_STATUS_TOKEN != '' }}
+
+jobs:
+  e2e:
+    name: E2E ${{ github.event.client_payload.branch || inputs.branch }} (${{ github.event.client_payload.repo || 'manual' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validar la rama
+        run: |
+          case "$BRANCH" in dev|preprod) ;; *) echo "Rama no soportada: '$BRANCH'" >&2; exit 1 ;; esac
+          case "$SOURCE_REPO" in ""|GreenITESO-Backend|GreenITESO-Frontend) ;; *) echo "Repo no soportado: '$SOURCE_REPO'" >&2; exit 1 ;; esac
+          if [ -n "$SOURCE_SHA" ] && ! [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "SHA inválido" >&2; exit 1; fi
+
+      - name: Elegir commits
+        id: refs
+        run: |
+          # El repo que disparó va en su commit exacto; el otro, en la punta de la misma rama.
+          backend_ref="$BRANCH"; frontend_ref="$BRANCH"
+          if [ "$SOURCE_REPO" = GreenITESO-Backend ] && [ -n "$SOURCE_SHA" ]; then backend_ref="$SOURCE_SHA"; fi
+          if [ "$SOURCE_REPO" = GreenITESO-Frontend ] && [ -n "$SOURCE_SHA" ]; then frontend_ref="$SOURCE_SHA"; fi
+          echo "backend=$backend_ref" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Marcar el commit como pendiente
+        if: env.SOURCE_SHA != '' && env.HAS_STATUS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.E2E_STATUS_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api "repos/$ORG/$SOURCE_REPO/statuses/$SOURCE_SHA" -f state=pending -f context="e2e/$BRANCH" \
+            -f description="E2E corriendo" -f target_url="$RUN_URL" || echo "No se pudo marcar el estado (sigue la corrida)"
+
+      - name: Checkout de pruebas
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout del Backend (${{ steps.refs.outputs.backend }})
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.ORG }}/GreenITESO-Backend
+          ref: ${{ steps.refs.outputs.backend }}
+          path: _stack/backend
+          persist-credentials: false
+
+      - name: Checkout del Frontend (${{ steps.refs.outputs.frontend }})
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.ORG }}/GreenITESO-Frontend
+          ref: ${{ steps.refs.outputs.frontend }}
+          path: _stack/frontend
+          persist-credentials: false
+
+      - name: Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias de las pruebas
+        run: |
+          python -m pip install --quiet uv
+          uv sync --frozen
+          uv run playwright install --with-deps chromium
+
+      - name: Levantar el stack (${{ env.BRANCH }})
+        env:
+          BACKEND_DIR: ${{ github.workspace }}/_stack/backend
+          FRONTEND_DIR: ${{ github.workspace }}/_stack/frontend
+        run: ci/stack/up.sh
+
+      - name: Correr la suite (${{ env.SUITE }})
+        id: tests
+        env:
+          AUTH_STATE_DIR: ${{ runner.temp }}/e2e-auth
+        run: uv run pytest -m "$SUITE" -n 4 --junitxml=reporting/junit.xml
+
+      - name: Resumen
+        if: always()
+        run: |
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import os, xml.etree.ElementTree as ET
+          from pathlib import Path
+          print(f"## E2E `{os.environ['BRANCH']}` ({os.environ.get('SOURCE_REPO') or 'manual'} {os.environ.get('SOURCE_SHA', '')[:7]})")
+          junit = Path("reporting/junit.xml")
+          if not junit.exists():
+              print("No hubo resultados: la suite no llegó a correr (revisa el paso del stack).")
+              raise SystemExit
+          suite = ET.parse(junit).getroot()
+          suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
+          total, failures, errors, skipped = (int(suite.get(k, 0)) for k in ("tests", "failures", "errors", "skipped"))
+          print(f"**{total - failures - errors - skipped} pasaron**, {failures + errors} fallaron, {skipped} omitidas.\n")
+          for case in suite.iter("testcase"):
+              if case.find("failure") is not None or case.find("error") is not None:
+                  print(f"- ❌ `{case.get('name')}`")
+          EOF
+
+      - name: Logs del stack
+        if: always()
+        run: |
+          mkdir -p reporting/logs
+          BACKEND_DIR=_stack/backend FRONTEND_DIR=_stack/frontend \
+            docker compose -f ci/stack/compose.yaml logs --no-color > reporting/logs/stack.log 2>&1 || true
+
+      - name: Subir reportes
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-${{ env.BRANCH }}-${{ github.run_id }}
+          path: reporting/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Estado final en el commit
+        if: always() && env.SOURCE_SHA != '' && env.HAS_STATUS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.E2E_STATUS_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESULT: ${{ job.status }}
+        run: |
+          state=failure; [ "$RESULT" = success ] && state=success
+          gh api "repos/$ORG/$SOURCE_REPO/statuses/$SOURCE_SHA" -f state="$state" -f context="e2e/$BRANCH" \
+            -f description="E2E $RESULT" -f target_url="$RUN_URL" || echo "No se pudo publicar el estado"
+
+      - name: Tirar el stack
+        if: always()
+        env:
+          BACKEND_DIR: _stack/backend
+          FRONTEND_DIR: _stack/frontend
+        run: ci/stack/down.sh

@@ -1,0 +1,39 @@
+# Copiar tal cual a GreenITESO-Backend y GreenITESO-Frontend como .github/workflows/trigger-e2e.yml.
+#
+# En cada push a dev o preprod le avisa a GreenITESO-Testing, que levanta un stack desechable con esa
+# rama y corre la suite E2E (.github/workflows/e2e-branch.yml de Testing). No usa ni expone secretos
+# del repo que lo copia, salvo E2E_DISPATCH_TOKEN.
+#
+# Secreto necesario en cada repo: E2E_DISPATCH_TOKEN, un fine-grained PAT (o token de GitHub App)
+# con acceso SOLO a GreenITESO-Testing y el permiso "Contents: Read and write" (lo exige
+# repository_dispatch). Si falta, el job lo avisa y termina sin fallar.
+name: Trigger E2E
+
+on:
+  push:
+    branches: [dev, preprod]
+
+permissions: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Avisar a GreenITESO-Testing
+        env:
+          GH_TOKEN: ${{ secrets.E2E_DISPATCH_TOKEN }}
+          REPO: ${{ github.event.repository.name }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::Falta el secreto E2E_DISPATCH_TOKEN; no se disparó el E2E."
+            exit 0
+          fi
+          gh api repos/GreenITESO-Proyecto-Integrador/GreenITESO-Testing/dispatches \
+            -f event_type=greeniteso-branch-updated \
+            -f "client_payload[repo]=$REPO" \
+            -f "client_payload[branch]=$BRANCH" \
+            -f "client_payload[sha]=$SHA"
+          echo "E2E disparado para $REPO@$BRANCH ($SHA)."

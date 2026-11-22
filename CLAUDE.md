@@ -15,6 +15,7 @@ if [ ! -e .env ] && [ ! -L .env ]; then cp .env.example .env; fi  # no sobrescri
 uv run python -m src.utils.auth --role student   # login manual con Microsoft, una vez por rol
 uv run python -m src.utils.auth --role admin
 uv run python -m src.utils.auth --role leader
+uv run python -m src.utils.auth --role campaign_leader   # líder propio del módulo Campañas
 ```
 
 Por default, las pruebas corren contra la **versión desplegada en producción** (`BASE_URL` en `.env.example`). La API está en el mismo dominio, porque nginx manda `/api/` al backend.
@@ -47,6 +48,8 @@ src/
   actions/<Modulo>_actions.py   # TODA la lógica de cada módulo
   utils/
     auth.py                 # sesión de prueba: tokens del backend → sessionStorage (modos refresh/mock)
+    api.py                  # ApiClient (API con los tokens de los roles de prueba) y api_for_page(page)
+    mocks.py                # mocks de red: mock_api_error/json, capture_json_response, socket de notificaciones
     test_data.py            # marcador de datos de prueba (unique_name) + limpieza al final de la corrida
     common_actions.py       # acciones de UI reutilizables entre módulos/equipos (login_as, go_to, ...)
     helpers.py              # chequeos de estado, esperas, assert_action
@@ -58,6 +61,9 @@ tests/
     test_<Modulo>.py        # SOLO declaraciones de tests
   equipo1/ equipo2/ equipo3/   # cuando se haga el reparto, cada carpeta de módulo se mueve aquí
 Jenkinsfile
+.github/workflows/e2e-branch.yml  # E2E de dev/preprod en GitHub Actions con un stack desechable
+ci/stack/                   # compose.yaml (db + backend mock + frontend), up.sh, down.sh, seed_users.py
+ci/dispatch/trigger-e2e.yml # workflow que se copia a Backend y Frontend para disparar el E2E
 ci/frontend-release-trigger.yml   # workflow para el repo de frontend (opcional)
 ```
 
@@ -166,6 +172,8 @@ Hay dos modos, que se eligen con `AUTH_MODE` en `.env`:
 | `refresh` (default) | Ambientes desplegados (prod) | Una persona inicia sesión con Microsoft **una vez por usuario** con `uv run python -m src.utils.auth --role <rol>`. Se guarda su refresh token y en cada corrida se canjea en `/api/v1/auth/refresh/`. |
 | `mock` | Stack local | `POST /api/v1/auth/login/` con `id_token = "mock:<email>"`. El backend solo lo acepta con `MICROSOFT_AUTH_MODE=mock` (local, sin desplegar). |
 
+**Si el dueño de la cuenta no está en tu máquina:** que inicie sesión en el sitio desde su navegador, abra DevTools → Console y corra el snippet `DEVTOOLS_SNIPPET` de `src/utils/auth.py` (copia la sesión al portapapeles). Te la manda por un canal privado, tú copias su texto y corres `pbpaste | uv run python -m src.utils.auth --role <rol> --import`. El import canjea el refresh token de inmediato, así que la copia enviada deja de servir. El dueño **no** debe usar "Cerrar sesión" antes de que la importes (eso invalida el token); basta con cerrar la pestaña.
+
 **Detalles del modo `refresh`:**
 - Los refresh tokens **se pueden usar una sola vez** y duran **7 días**. Cada renovación guarda el token nuevo en `~/.greeniteso-e2e/auth/<email>.json`, que está fuera del repo; se puede cambiar con `AUTH_STATE_DIR`. Si pasan más de 7 días sin corridas, o alguien usa el token en otro lado, hay que repetir el login manual. El error lo dice.
 - Los workers de xdist comparten ese archivo con un lock, así que solo uno canjea el token y los demás reusan el access token.
@@ -176,8 +184,12 @@ Hay dos modos, que se eligen con `AUTH_MODE` en `.env`:
 **En los dos modos:**
 - La sesión se inyecta una sola vez por pestaña. Así, el test de "Cerrar sesión" funciona: después de salir, la sesión no regresa al navegar.
 - Los tests que necesitan entrar **sin sesión** (como el de la pantalla de login) simplemente no llaman `login_as`.
-- El rol de líder de clan no es global: el usuario `leader` tiene que tener su clan como parte del setup del módulo.
+- El rol de líder de clan no es global: el usuario `leader` tiene que tener su clan como parte del setup del módulo. Campañas usa su propio `campaign_leader` (el backend permite un solo liderazgo por usuario); si ese usuario ya lidera un clan, el setup lo reusa en vez de crear uno.
 - `login_as` marca el recorrido guiado como visto (en `localStorage`) para que no tape la UI. Solo los tests del recorrido usan `login_as(page, role, skip_tour=False)`.
+
+## Mocks de red: cuándo usarlos
+
+`src/utils/mocks.py` intercepta peticiones con `page.route`. Úsalos **solo** para estados que las cuentas reales no pueden alcanzar (error del servidor + "Reintentar", listas vacías, usuario nuevo) y para interceptar difusiones que llegarían a usuarios reales (p. ej. el POST de una campaña global o el websocket de notificaciones). Los caminos felices van contra el backend real. Los mocks se registran antes de `go_to`.
 
 ## Datos de prueba en prod: marcar y limpiar
 
@@ -192,14 +204,16 @@ name = unique_name("Clan", max_length=100)    # "E2E-2611061530-ab12 Clan 1"
 - Úsalo en todo texto que identifique lo creado: contenido de posts, nombre de clan, título de campaña o propuesta, bio y nickname. Respeta los límites del backend con `max_length`: nickname 50, clan 100, campaña 150 y bio 500.
 - Hay un solo marcador por corrida, el mismo en todos los workers. Al terminar, `conftest.py` llama `cleanup_run` una vez desde el proceso controlador, y este usa la API con los usuarios de prueba para:
   - borrar los posts marcados;
-  - disolver los clanes marcados;
   - rechazar las propuestas de campaña pendientes que estén marcadas;
   - iniciar y finalizar las campañas marcadas, porque no se pueden borrar;
+  - salir de los clanes sin marcador a los que un usuario de prueba se unió durante la corrida (se registran con `register_membership`; p. ej. Campañas reusa el clan real que ya lidera `campaign_leader`). Va después de las campañas;
+  - disolver los clanes marcados. Va después de las campañas, porque al disolver un clan se ocultan sus campañas PRIVATE;
+  - borrar (soft delete) las notificaciones marcadas, en mensaje o título, de cada usuario de prueba. Va al final, porque rechazar propuestas y disolver clanes también genera notificaciones con el marcador;
   - rechazar los action logs que crearon los usuarios de prueba durante la corrida, lo que revierte sus puntos;
   - restaurar el perfil de cada usuario de prueba (bio, preferencias, visibilidad y avatar) a como estaba antes de la corrida.
 - Al iniciar, también limpia los marcadores de corridas que no terminaron y tienen más de 3 horas.
 - El resumen sale en la terminal y en `reporting/logs/cleanup_<marcador>.json`. Para depurar sin limpiar, usa `E2E_CLEANUP=false`.
-- **Lo que no se puede deshacer:** los canjes en la tienda, las campañas finalizadas (quedan en el historial), las notificaciones que les llegan a usuarios reales y el costo de cambiar el nickname. Los tests que hacen esto van solo en `full`, y hay que evitar que interactúen con usuarios reales; por ejemplo, no enviar solicitudes a clanes ajenos.
+- **Lo que no se puede deshacer:** los canjes en la tienda, las campañas finalizadas (quedan en el historial), las notificaciones que les llegan a usuarios reales, el costo de cambiar el nickname, las propuestas de campaña rechazadas (no hay DELETE; quedan como REJECTED) y las imágenes del feed que se subieron pero nunca se adjuntaron a un post (las de un post se borran junto con él). Los tests que hacen esto van solo en `full`, y hay que evitar que interactúen con usuarios reales; por ejemplo, no enviar solicitudes a clanes ajenos.
 - Si un test crea algo que la limpieza no cubre, agrega el paso en `test_data.py`. No lo dejes al aire.
 
 ## Configuración y fixtures
@@ -208,7 +222,34 @@ name = unique_name("Clan", max_length=100)    # "E2E-2611061530-ab12 Clan 1"
 - Cuando un test falla se guarda un screenshot full-page en `reporting/screenshots/` y se adjunta a Allure en automático.
 - Como `base_url` ya está configurado, `page.goto("/ruta")` funciona. También está `common_actions.go_to(page, "/ruta")`.
 
-## CI: Jenkins
+## CI: dev y preprod en GitHub Actions (stack desechable)
+
+dev y preprod **no están desplegados** (en el backend, `CLOUD_DEPLOYMENT_ENABLED` está apagado; solo prod tiene URL). Para probar cada cambio que entra a esas ramas, `.github/workflows/e2e-branch.yml` arma el ambiente dentro del runner y lo tira al terminar:
+
+1. **Disparo:** cada push a `dev` o `preprod` en Backend o Frontend corre su `trigger-e2e.yml` (copia de `ci/dispatch/trigger-e2e.yml`), que manda un `repository_dispatch` (`greeniteso-branch-updated`, con `repo`, `branch` y `sha`) a este repo. También se puede lanzar a mano en *Actions → E2E - rama → Run workflow*.
+2. **Checkout:** el repo que disparó va en su commit exacto y el otro en la punta de la misma rama.
+3. **Stack** (`ci/stack/up.sh`): Postgres en tmpfs, backend con `MICROSOFT_AUTH_MODE=mock` (migra y carga el catálogo al arrancar) y frontend con su Dockerfile real (nginx manda `/api/` y `/ws/` al backend), todo en `http://localhost:8080`. `seed_users.py` crea los 4 usuarios `e2e.*@iteso.mx` con onboarding hecho y `assign_user_role` deja al admin como ADMIN.
+4. **Suite:** `pytest -m full -n 4` con `AUTH_MODE=mock`. No hace falta guardar sesiones ni tokens, y como la base es nueva en cada corrida no se acumula nada.
+5. **Resultados:** resumen en la página de la corrida, artifact `e2e-<rama>-<run>` con JUnit, Allure, screenshots, logs y `stack.log` (logs del backend/frontend). Con el secreto opcional `E2E_STATUS_TOKEN` (fine-grained PAT con *Commit statuses: write* en Backend y Frontend) deja el estado `e2e/<rama>` (✅/❌) en el commit que disparó.
+
+Para correrlo en local (necesita Docker):
+
+```bash
+BACKEND_DIR=../GreenITESO-Backend FRONTEND_DIR=../GreenITESO-Frontend ci/stack/up.sh
+BASE_URL=http://localhost:8080 AUTH_MODE=mock AUTH_STATE_DIR=/tmp/e2e-auth \
+  TEST_STUDENT_EMAIL=e2e.student@iteso.mx TEST_ADMIN_EMAIL=e2e.admin@iteso.mx \
+  TEST_LEADER_EMAIL=e2e.leader@iteso.mx TEST_CAMPAIGN_LEADER_EMAIL=e2e.campaign.leader@iteso.mx \
+  uv run pytest -m full -n 4
+ci/stack/down.sh
+```
+
+Lo que hay que configurar una vez:
+- En Backend y Frontend: copiar `ci/dispatch/trigger-e2e.yml` a `.github/workflows/trigger-e2e.yml` y crear el secreto `E2E_DISPATCH_TOKEN` (fine-grained PAT o GitHub App con acceso solo a GreenITESO-Testing y *Contents: Read and write*). Sin el secreto, el trigger avisa y no falla.
+- En Testing (opcional): el secreto `E2E_STATUS_TOKEN` para los estados en los commits.
+
+Cuando dev o preprod se desplieguen, la misma suite puede apuntar a su URL con `BASE_URL`, pero ahí aplica el modo `refresh` (sesiones reales por ambiente), como en prod.
+
+## CI: Jenkins (prod)
 
 `Jenkinsfile` (pipeline declarativo):
 

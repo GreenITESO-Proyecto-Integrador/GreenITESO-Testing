@@ -302,22 +302,47 @@ def test_00_10_003_checkMarkAllAsRead(page: Page) -> bool:
     if not locator_has_visible_match(mark_all, timeout=_LONG_TIMEOUT):
         logger.error("No se ve el botón 'Marcar todo'")
         return False
-    mark_all.click()
-
-    if not wait_until(lambda: _subtitle_text(page) == _ALL_READ_TEXT, page, timeout=_SHORT_TIMEOUT):
-        logger.error("Después de 'Marcar todo' el subtítulo es %s", _subtitle_text(page))
+    with page.expect_response(
+        lambda response: (
+            response.request.method == "PATCH" and urlsplit(response.url).path == "/api/v1/notifications/mark-all-read/"
+        ),
+        timeout=_LONG_TIMEOUT,
+    ) as mark_all_info:
+        mark_all.click()
+    if not mark_all_info.value.ok:
+        logger.error(
+            "PATCH mark-all-read respondió %s",
+            mark_all_info.value.status,
+        )
         return False
-    if not wait_until(lambda: page.locator(Locs.NOTIFICATIONS_BELL_BADGE).count() == 0, page, timeout=_SHORT_TIMEOUT):
-        logger.error("El globo del navbar sigue visible después de 'Marcar todo'")
+
+    if not all(
+        wait_until(lambda title=title: _is_read_in_api(api, title), page, timeout=_LONG_TIMEOUT)
+        for title in _STATE["titles"]
+    ):
+        logger.error("Alguna notificación de prueba sigue sin leer en la API")
         return False
 
+    def ui_matches_api() -> bool:
+        unread = api.json("student", "GET", _UNREAD_COUNT_PATH)["unread_count"]
+        shown = _subtitle_unread(page)
+        return shown == unread and _badge_unread(page) == shown
+
+    if not wait_until(ui_matches_api, page, timeout=_LONG_TIMEOUT):
+        unread = api.json("student", "GET", _UNREAD_COUNT_PATH)["unread_count"]
+        logger.error(
+            "Después de 'Marcar todo' el contador/UI no coincide con la API (API=%s, subtítulo=%s, globo=%s)",
+            unread,
+            _subtitle_text(page),
+            _badge_unread(page),
+        )
+        return False
     unread = api.json("student", "GET", _UNREAD_COUNT_PATH)["unread_count"]
-    if unread != 0:
-        # Pudo llegar una notificación nueva en paralelo: se revisa que las marcadas sí estén leídas.
-        logger.warning("El servidor reporta %s sin leer tras 'Marcar todo' (posible carrera con otro módulo)", unread)
-        if not all(_is_read_in_api(api, title) for title in _STATE["titles"]):
-            logger.error("Alguna notificación de prueba sigue sin leer en la API")
-            return False
+    if unread:
+        logger.warning(
+            "El servidor reporta %s sin leer tras 'Marcar todo' (notificación nueva o carrera con otro módulo)",
+            unread,
+        )
     return True
 
 

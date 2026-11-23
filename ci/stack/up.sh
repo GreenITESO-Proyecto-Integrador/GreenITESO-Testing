@@ -23,4 +23,16 @@ admins="$(python3 "$here/seed_users.py")"
 for email in $admins; do
   "${compose[@]}" exec -T backend python manage.py assign_user_role "$email" ADMIN
 done
+
+# Saldo inicial del usuario de la Tienda: el catálogo de CI no da 20 pts en un día y canjear no se
+# deshace. 50 pts alcanzan para un marco (20) y dejan un fondo (100) fuera del saldo (caso 009).
+store_email="${TEST_STORE_EMAIL:-e2e.store@iteso.mx}"
+STORE_EMAIL="$store_email" "${compose[@]}" exec -T -e STORE_EMAIL backend python manage.py shell -c '
+import os
+from green_iteso.accounts.models import UserProfile
+email = os.environ["STORE_EMAIL"]
+if not UserProfile.objects.filter(user__email__iexact=email).update(available_points=50):
+    raise SystemExit(f"No existe el perfil de {email}")
+print(f"{email}: 50 pts disponibles")
+'
 echo "Stack listo en $BASE_URL"

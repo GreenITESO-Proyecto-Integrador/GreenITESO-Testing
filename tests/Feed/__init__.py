@@ -14,6 +14,10 @@ Casos del test plan (Notion: GreenITESO — Test Plan):
 - TC-09-009 Ocultar editar y eliminar en publicaciones de otros
 - TC-09-010 Impedir que otro usuario edite o borre una publicación ajena  [extra: matriz T2-06]
 - TC-09-011 Mantener el like al recargar  [extra: matriz T2-07]
+- TC-09-012 Filtrar publicaciones por tipo (Todos, Evidencias, Anuncios)  [extra: FeedFilters]
+- TC-09-013 Ordenar publicaciones por Populares y volver a Recientes  [extra: FeedFilters]
+- TC-09-014 Publicar con filtro activo muestra aviso y 'Ver en Todos' lo muestra  [extra: FeedFilters]
+- TC-09-015 Mostrar estados vacío y de error al cargar el muro  [extra: FeedFilters]
 
 Notas de implementación:
 

@@ -10,16 +10,17 @@ import re
 import struct
 import zlib
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import Locator, Page, Request, Response
 
 from src.configs import environment as env
 from src.utils.api import api_for_page
-from src.utils.common_actions import accept_next_dialog, go_to, login_as
+from src.utils.common_actions import accept_next_dialog, click_filter_chip, go_to, login_as
 from src.utils.helpers import locator_has_visible_match, wait_for_app_ready, wait_until
 from src.utils.locators import Locs
 from src.utils.logger import get_logger
+from src.utils.mocks import capture_json_response, mock_api_error, mock_api_json
 from src.utils.test_data import unique_name
 
 logger = get_logger(__name__)
@@ -195,14 +196,16 @@ def _image_loaded(img: Locator) -> bool:
     return bool(img.first.evaluate("el => el.complete && el.naturalWidth > 0"))
 
 
-def _create_post_via_api(page: Page, role: str, label: str) -> dict[str, Any]:
-    """Create a SHARED_EVIDENCE post with the API (setup of tests that need a post that already exists)."""
+def _create_post_via_api(
+    page: Page, role: str, label: str, *, post_type: str = "SHARED_EVIDENCE"
+) -> dict[str, Any]:
+    """Create a feed post with the API (setup of tests that need a post that already exists)."""
     content = unique_name(label)
     return api_for_page(page).json(
         role,
         "POST",
         _FEED_API_PATH,
-        data={"content": content, "post_type": "SHARED_EVIDENCE"},
+        data={"content": content, "post_type": post_type},
         expected=(201,),
     )
 
@@ -567,3 +570,234 @@ def test_00_09_011_checkLikePersistsOnReload(page: Page) -> bool:
         logger.error("Quitar el like no se mantuvo después de recargar")
         return False
     return _api_like_state(page, post["id"]) == before
+
+
+# --- privadas: filtros y estados ------------------------------------------------------------
+
+
+_FEED_LIST_RE = re.compile(r"/api/v1/feed/(\?.*)?$")
+
+
+def _is_feed_list_url(
+    url: str, *, expected_type: str | None = None, expected_ordering: str | None = None
+) -> bool:
+    """Match GET /api/v1/feed/ requests whose query params match the expected filter/ordering."""
+    parts = urlsplit(url)
+    if parts.path != _FEED_API_PATH:
+        return False
+    params = parse_qs(parts.query)
+    actual_type = params.get("post_type", [None])[0]
+    actual_ordering = params.get("ordering", [None])[0]
+    return actual_type == expected_type and actual_ordering == expected_ordering
+
+
+def _active_chip_text(page: Page, pressed_xpath: str) -> str | None:
+    """Return the text of the single active chip in a filter group, or None if count != 1."""
+    pressed = page.locator(pressed_xpath)
+    if pressed.count() != 1:
+        return None
+    return (pressed.first.text_content() or "").strip()
+
+
+def _select_feed_filter(
+    page: Page,
+    group_label: str,
+    chip_text: str,
+    *,
+    expected_type: str | None = None,
+    expected_ordering: str | None = None,
+) -> dict[str, Any]:
+    """Click a Feed filter/order chip and return the JSON payload of the resulting GET /api/v1/feed/."""
+    return capture_json_response(
+        page,
+        lambda url: _is_feed_list_url(
+            url, expected_type=expected_type, expected_ordering=expected_ordering
+        ),
+        lambda: click_filter_chip(page, group_label, chip_text, timeout=_SHORT_TIMEOUT),
+        timeout=_LONG_TIMEOUT,
+    )
+
+
+def _visible_post_contents(page: Page) -> list[str]:
+    """Read the trimmed text of every rendered feed post in DOM order."""
+    return [text.strip() for text in page.locator(Locs.FEED_POST_CONTENT).all_text_contents()]
+
+
+# --- tests: filtros, ordenamiento y estados (FeedFilters) -----------------------------------
+
+
+def test_00_09_012_checkFilterByPostType(page: Page) -> bool:
+    evidence = _create_post_via_api(page, "student", "Feed filtro evidencia 012", post_type="SHARED_EVIDENCE")
+    announcement = _create_post_via_api(page, "admin", "Feed filtro anuncio 012", post_type="OFFICIAL_ANNOUNCEMENT")
+
+    _open_feed(page)
+    if _active_chip_text(page, Locs.FEED_TYPE_PRESSED_CHIP) != "Todos":
+        logger.error(
+            "El filtro inicial de tipo no es 'Todos': %r",
+            _active_chip_text(page, Locs.FEED_TYPE_PRESSED_CHIP),
+        )
+        return False
+    if _active_chip_text(page, Locs.FEED_ORDER_PRESSED_CHIP) != "Recientes":
+        logger.error("El orden inicial no es 'Recientes': %r", _active_chip_text(page, Locs.FEED_ORDER_PRESSED_CHIP))
+        return False
+
+    _wait_card(page, evidence["content"])
+    _wait_card(page, announcement["content"])
+
+    # Filtrar por Anuncios -> solo aparece el anuncio oficial, no la evidencia.
+    announcements_data = _select_feed_filter(
+        page,
+        Locs.FEED_TYPE_FILTER_GROUP_LABEL,
+        "Anuncios",
+        expected_type="OFFICIAL_ANNOUNCEMENT",
+    )
+    if _active_chip_text(page, Locs.FEED_TYPE_PRESSED_CHIP) != "Anuncios":
+        logger.error("El chip 'Anuncios' no quedó como único activo")
+        return False
+    if any(item.get("post_type") != "OFFICIAL_ANNOUNCEMENT" for item in announcements_data.get("results", [])):
+        logger.error("La API devolvió publicaciones de otro tipo bajo post_type=OFFICIAL_ANNOUNCEMENT")
+        return False
+    _wait_card(page, announcement["content"])
+    if not wait_until(lambda: _post_card(page, evidence["content"]).count() == 0, page, timeout=_SHORT_TIMEOUT):
+        logger.error("La publicación SHARED_EVIDENCE sigue visible al filtrar por 'Anuncios'")
+        return False
+
+    # Filtrar por Evidencias -> solo aparece la evidencia, no el anuncio.
+    evidences_data = _select_feed_filter(
+        page,
+        Locs.FEED_TYPE_FILTER_GROUP_LABEL,
+        "Evidencias",
+        expected_type="SHARED_EVIDENCE",
+    )
+    if _active_chip_text(page, Locs.FEED_TYPE_PRESSED_CHIP) != "Evidencias":
+        logger.error("El chip 'Evidencias' no quedó como único activo")
+        return False
+    if any(item.get("post_type") != "SHARED_EVIDENCE" for item in evidences_data.get("results", [])):
+        logger.error("La API devolvió publicaciones de otro tipo bajo post_type=SHARED_EVIDENCE")
+        return False
+    _wait_card(page, evidence["content"])
+    if not wait_until(lambda: _post_card(page, announcement["content"]).count() == 0, page, timeout=_SHORT_TIMEOUT):
+        logger.error("La publicación OFFICIAL_ANNOUNCEMENT sigue visible al filtrar por 'Evidencias'")
+        return False
+
+    # Volver a Todos -> sin query param post_type, reaparecen ambas.
+    _select_feed_filter(page, Locs.FEED_TYPE_FILTER_GROUP_LABEL, "Todos", expected_type=None)
+    if _active_chip_text(page, Locs.FEED_TYPE_PRESSED_CHIP) != "Todos":
+        logger.error("El chip 'Todos' no quedó como único activo al regresar")
+        return False
+    _wait_card(page, evidence["content"])
+    _wait_card(page, announcement["content"])
+    return True
+
+
+def test_00_09_013_checkOrderByPopular(page: Page) -> bool:
+    _open_feed(page)
+    if _active_chip_text(page, Locs.FEED_ORDER_PRESSED_CHIP) != "Recientes":
+        logger.error("El orden inicial no es 'Recientes'")
+        return False
+
+    popular_data = _select_feed_filter(
+        page,
+        Locs.FEED_ORDER_FILTER_GROUP_LABEL,
+        "Populares",
+        expected_ordering="popular",
+    )
+    if _active_chip_text(page, Locs.FEED_ORDER_PRESSED_CHIP) != "Populares":
+        logger.error("El chip 'Populares' no quedó como único activo")
+        return False
+
+    results = popular_data.get("results", [])
+    likes_counts = [int(item.get("likes_count") or 0) for item in results]
+    if likes_counts != sorted(likes_counts, reverse=True):
+        logger.error("La respuesta de ordering=popular no viene ordenada por likes descendentes: %s", likes_counts)
+        return False
+
+    expected_contents = [(item.get("content") or "").strip() for item in results]
+    if not wait_until(lambda: _visible_post_contents(page) == expected_contents, page, timeout=_SHORT_TIMEOUT):
+        logger.error(
+            "El orden renderizado en Populares (%s) no coincide con la API (%s)",
+            _visible_post_contents(page)[:5],
+            expected_contents[:5],
+        )
+        return False
+
+    # Regresar a Recientes -> deja de enviar ordering=popular.
+    recent_data = _select_feed_filter(
+        page,
+        Locs.FEED_ORDER_FILTER_GROUP_LABEL,
+        "Recientes",
+        expected_ordering=None,
+    )
+    if _active_chip_text(page, Locs.FEED_ORDER_PRESSED_CHIP) != "Recientes":
+        logger.error("El chip 'Recientes' no volvió a quedar activo")
+        return False
+
+    recent_contents = [(item.get("content") or "").strip() for item in recent_data.get("results", [])]
+    if not wait_until(lambda: _visible_post_contents(page) == recent_contents, page, timeout=_SHORT_TIMEOUT):
+        logger.error("La lista no se actualizó al volver a 'Recientes'")
+        return False
+    return True
+
+
+def test_00_09_014_checkPublishWhileFilterHidesPost(page: Page) -> bool:
+    _open_feed(page)
+    _select_feed_filter(
+        page,
+        Locs.FEED_TYPE_FILTER_GROUP_LABEL,
+        "Anuncios",
+        expected_type="OFFICIAL_ANNOUNCEMENT",
+    )
+
+    content = unique_name("Feed oculto filtro 014")
+    _fill_content(page, content)
+    created = _submit_post(page)
+    if created.get("content") != content:
+        logger.error("La API regresó otro contenido: %r", created.get("content"))
+        return False
+
+    if not _visible(page, Locs.FEED_HIDDEN_POST_BANNER, timeout=_SHORT_TIMEOUT):
+        logger.error("No apareció el aviso de que la publicación quedó oculta por el filtro activo")
+        return False
+    if _post_card(page, content).count() != 0:
+        logger.error("La publicación SHARED_EVIDENCE se insertó en la vista filtrada por 'Anuncios'")
+        return False
+
+    capture_json_response(
+        page,
+        lambda url: _is_feed_list_url(url, expected_type=None, expected_ordering=None),
+        lambda: page.locator(Locs.button_with_text("Ver en Todos")).first.click(),
+        timeout=_LONG_TIMEOUT,
+    )
+    if _active_chip_text(page, Locs.FEED_TYPE_PRESSED_CHIP) != "Todos":
+        logger.error("'Ver en Todos' no restableció el filtro de tipo a 'Todos'")
+        return False
+    if not wait_until(lambda: page.locator(Locs.FEED_HIDDEN_POST_BANNER).count() == 0, page, timeout=_SHORT_TIMEOUT):
+        logger.error("El aviso de publicación oculta sigue visible después de pulsar 'Ver en Todos'")
+        return False
+    _wait_card(page, content)
+    return True
+
+
+def test_00_09_015_checkEmptyAndErrorStates(page: Page) -> bool:
+    empty_handle = mock_api_json(page, _FEED_LIST_RE, {"count": 0, "next": None, "previous": None, "results": []})
+    try:
+        _open_feed(page)
+        if not _visible(page, Locs.FEED_EMPTY_TEXT, timeout=_LONG_TIMEOUT):
+            logger.error("No se muestra el mensaje de estado vacío en /feed")
+            return False
+        if page.locator(Locs.FEED_POST_CONTENT).count() != 0:
+            logger.error("Se muestran tarjetas de publicaciones cuando la API devuelve lista vacía")
+            return False
+    finally:
+        empty_handle.restore()
+
+    error_handle = mock_api_error(page, _FEED_LIST_RE, status=500)
+    try:
+        page.reload(wait_until="domcontentloaded")
+        wait_for_app_ready(page)
+        if not _visible(page, Locs.FEED_LOAD_ERROR, timeout=_LONG_TIMEOUT):
+            logger.error("No se muestra el aviso 'Error al cargar el muro social.' ante un 500")
+            return False
+    finally:
+        error_handle.restore()
+    return True

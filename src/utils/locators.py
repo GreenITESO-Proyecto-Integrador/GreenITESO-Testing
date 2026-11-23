@@ -92,6 +92,32 @@ class Locators:
     # --- Perfil (pages/Profile) ---
     PROFILE_NAME_TITLE = "//main//h1"
 
+    # --- Tienda (pages/Store) ---
+    STORE_TITLE = "//main//h1[normalize-space(.)='Tienda de canjeables']"
+    STORE_BALANCE = "//section[@aria-label='Puntos disponibles para canje']//span[contains(@class,'text-3xl')]"
+    STORE_FILTER_GROUP_LABEL = "Filtrar por categoría"  # aria-label del grupo, para click_filter_chip
+    STORE_FILTER_GROUP = "//*[@role='group'][@aria-label='Filtrar por categoría']"
+    STORE_FILTER_PRESSED_CHIP = "//*[@role='group'][@aria-label='Filtrar por categoría']//button[@aria-pressed='true']"
+    STORE_CARD = "//main//*[@data-slot='card'][.//h3]"
+    STORE_CARD_NAMES = "//main//*[@data-slot='card']//h3"
+    # Relativos a una tarjeta (card.locator(Locs.X)); llevan "xpath=" como los de Dashboard.
+    STORE_CARD_CATEGORY = "xpath=.//span[contains(@class,'left-2')]"
+    STORE_CARD_REDEEM_BUTTON = "xpath=.//button[starts-with(normalize-space(.),'Canjear')]"
+    STORE_CARD_REDEEMED_BUTTON = "xpath=.//button[normalize-space(.)='Canjeado']"
+    STORE_CARD_OWNED_BADGE = "xpath=.//span[normalize-space(.)='Obtenido']"
+    STORE_LOADING = "//main//*[@role='status'][.//*[contains(@class,'animate-pulse')]]"
+    STORE_ERROR_TITLE = "//main//h2[normalize-space(.)='No se pudieron cargar los canjeables']"
+    STORE_ERROR_SECTION = "//section[.//h2[normalize-space(.)='No se pudieron cargar los canjeables']]"
+    STORE_RETRY_BUTTON = STORE_ERROR_SECTION + "//button[normalize-space(.)='Reintentar']"
+    STORE_EMPTY_TITLE = "//main//h2[normalize-space(.)='No hay canjeables disponibles']"
+    STORE_NO_MATCH_TEXT = "//main//p[normalize-space(.)='Ningún artículo coincide con la categoría seleccionada.']"
+    STORE_CONFIRM_DIALOG = "//*[@role='dialog'][.//*[normalize-space(.)='Confirmar Canje de Artículo']]"
+    STORE_CONFIRM_BUTTON = "//*[@role='dialog']//button[normalize-space(.)='Confirmar Canje']"
+    STORE_CANCEL_BUTTON = "//*[@role='dialog']//button[normalize-space(.)='Cancelar']"
+    STORE_DIALOG_ITEM_NAME = "//*[@role='dialog']//h4"
+    STORE_TOAST_TITLE = "//div[contains(@class,'fixed')]//h5"
+    STORE_TOAST_DESCRIPTION = "//div[contains(@class,'fixed')]//h5/following-sibling::p"
+
     # --- Locators parametrizables ---
     @staticmethod
     def button_with_text(text: str) -> str:
@@ -166,6 +192,16 @@ class Locators:
     @staticmethod
     def option_with_text(text: str) -> str:
         return f"//*[@role='option'][normalize-space(.)={_xpath_literal(text)}]"
+
+    @staticmethod
+    def store_card_with_name(name: str) -> str:
+        """Card of the store whose title (h3) is exactly `name`."""
+        return f"//main//*[@data-slot='card'][.//h3[normalize-space(.)={_xpath_literal(' '.join(name.split()))}]]"
+
+    @staticmethod
+    def store_dialog_value(label: str) -> str:
+        """Value of a row of the points breakdown in the confirm dialog (e.g. 'Tus puntos disponibles:')."""
+        return f"//*[@role='dialog']//div[span[normalize-space(.)={_xpath_literal(label)}]]/span[2]"
 
 
 def _xpath_literal(value: str) -> str:

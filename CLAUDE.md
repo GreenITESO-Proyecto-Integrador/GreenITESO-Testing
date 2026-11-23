@@ -247,7 +247,7 @@ ci/stack/down.sh
 ```
 
 Lo que hay que configurar una vez:
-- En Backend y Frontend: copiar `ci/dispatch/trigger-e2e.yml` a `.github/workflows/trigger-e2e.yml` y crear el secreto `E2E_DISPATCH_TOKEN` (fine-grained PAT o GitHub App con acceso solo a GreenITESO-Testing y *Contents: Read and write*). Sin el secreto, el trigger avisa y no falla.
+- En Backend y Frontend: copiar `ci/dispatch/trigger-e2e.yml` a `.github/workflows/trigger-e2e.yml` y crear el secreto `E2E_DISPATCH_TOKEN` (fine-grained PAT o GitHub App con acceso solo a GreenITESO-Testing y *Contents: Read and write*). Sin el secreto, el trigger falla (en rojo) para que no se salte el E2E en silencio.
 - En Testing (opcional): el secreto `E2E_STATUS_TOKEN` para los estados en los commits.
 
 Cuando dev o preprod se desplieguen, la misma suite puede apuntar a su URL con `BASE_URL`, pero ahí aplica el modo `refresh` (sesiones reales por ambiente), como en prod.

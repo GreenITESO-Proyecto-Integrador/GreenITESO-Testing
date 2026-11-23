@@ -6,7 +6,7 @@
 #
 # Secreto necesario en cada repo: E2E_DISPATCH_TOKEN, un fine-grained PAT (o token de GitHub App)
 # con acceso SOLO a GreenITESO-Testing y el permiso "Contents: Read and write" (lo exige
-# repository_dispatch). Si falta, el job lo avisa y termina sin fallar.
+# repository_dispatch). Si falta, el job falla para que no se salte el E2E en silencio.
 name: Trigger E2E
 
 on:
@@ -28,8 +28,8 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::Falta el secreto E2E_DISPATCH_TOKEN; no se disparó el E2E."
-            exit 0
+            echo "::error::Falta el secreto E2E_DISPATCH_TOKEN; no se pudo disparar el E2E."
+            exit 1
           fi
           gh api repos/GreenITESO-Proyecto-Integrador/GreenITESO-Testing/dispatches \
             -f event_type=greeniteso-branch-updated \

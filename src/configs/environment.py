@@ -16,7 +16,7 @@ def _bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y"}
 
 
-PRODUCTION_URL = "https://greeniteso-production-frontend-682248660949.northamerica-south1.run.app"
+PRODUCTION_URL = "https://greeniteso.mocking.so"
 BASE_URL = os.getenv("BASE_URL", PRODUCTION_URL)
 HEADLESS = _bool("HEADLESS", True)
 SLOW_MO = int(os.getenv("SLOW_MO", "0"))
@@ -35,11 +35,18 @@ AUTH_STATE_DIR = Path(os.getenv("AUTH_STATE_DIR", str(Path.home() / ".greeniteso
 # depurar: lo que no se limpie lo borra la siguiente corrida después de unas horas.
 E2E_CLEANUP = _bool("E2E_CLEANUP", True)
 
+# Id del worker de pytest-xdist ("gw0", "gw1", ...; vacío sin -n). Evita nombres repetidos entre workers.
+XDIST_WORKER = os.getenv("PYTEST_XDIST_WORKER", "")
+
 # Cuentas de prueba por rol. En AUTH_MODE=refresh deben ser cuentas @iteso.mx reales.
 TEST_USERS = {
     "student": os.getenv("TEST_STUDENT_EMAIL", "qa.estudiante@iteso.mx"),
     "admin": os.getenv("TEST_ADMIN_EMAIL", "qa.admin@iteso.mx"),
     "leader": os.getenv("TEST_LEADER_EMAIL", "qa.lider@iteso.mx"),
+    # Líder de un clan propio para Campañas (el backend permite un solo liderazgo por usuario).
+    "campaign_leader": os.getenv("TEST_CAMPAIGN_LEADER_EMAIL", "qa.lider.campanas@iteso.mx"),
+    # Cuenta propia de la Tienda: sus canjes cambian saldo e inventario y no se pueden deshacer.
+    "store": os.getenv("TEST_STORE_EMAIL", "qa.tienda@iteso.mx"),
 }
 
 REPORTING_DIR = ROOT_DIR / "reporting"

@@ -5,7 +5,7 @@ Si una función solo la usa un módulo, va como función privada (_nombre) en su
 
 import time
 
-from playwright.sync_api import Page
+from playwright.sync_api import Dialog, Page
 
 from src.configs import environment as env
 from src.utils.auth import AuthUser, get_session, inject_session
@@ -81,3 +81,49 @@ def logout(page: Page, *, timeout: int = env.DEFAULT_TIMEOUT) -> None:
     open_user_menu(page, timeout=timeout)
     click_robust(page, Locs.menuitem_with_text("Cerrar sesión"), timeout=timeout)
     logger.info("Sesión cerrada desde el menú de usuario")
+
+
+def accept_next_dialog(page: Page) -> list[str]:
+    """Accept the next native dialog (confirm/alert); the returned list receives its message."""
+    messages: list[str] = []
+
+    def _accept(dialog: Dialog) -> None:
+        messages.append(dialog.message)
+        dialog.accept()
+
+    page.once("dialog", _accept)
+    return messages
+
+
+def dismiss_next_dialog(page: Page) -> list[str]:
+    """Dismiss (cancel) the next native dialog; the returned list receives its message."""
+    messages: list[str] = []
+
+    def _dismiss(dialog: Dialog) -> None:
+        messages.append(dialog.message)
+        dialog.dismiss()
+
+    page.once("dialog", _dismiss)
+    return messages
+
+
+def click_filter_chip(page: Page, group_label: str, chip_text: str, *, timeout: int = 5_000) -> None:
+    """Click a filter chip inside the group `group_label` and wait until it reports aria-pressed=true."""
+    chip = page.get_by_role("group", name=group_label, exact=True).get_by_role(
+        "button", name=chip_text, exact=True
+    )
+    chip.first.wait_for(state="visible", timeout=timeout)
+    chip.first.click()
+    deadline = time.monotonic() + timeout / 1000
+    while time.monotonic() < deadline:
+        if chip.first.get_attribute("aria-pressed") == "true":
+            logger.debug("Chip %r del grupo %r activo", chip_text, group_label)
+            return
+        page.wait_for_timeout(100)
+    raise RuntimeError(f"El chip {chip_text!r} del grupo {group_label!r} no quedó activo")
+
+
+def close_success_banner(page: Page, *, timeout: int = 5_000) -> None:
+    """Close the success banner by its "Cerrar aviso" button."""
+    click_robust(page, Locs.button_with_aria("Cerrar aviso"), timeout=timeout)
+    logger.debug("Aviso de éxito cerrado")

@@ -1,0 +1,124 @@
+# E2E en cada Pull Request de este repo (GreenITESO-Testing).
+#
+# Valida que las pruebas nuevas o modificadas funcionen contra un stack desechable
+# (ci/stack) armado con Backend y Frontend en la rama indicada en STACK_BRANCH.
+# No toca prod ni ningún ambiente compartido: todo vive y muere en el runner.
+name: E2E - PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Un push nuevo al mismo PR cancela la corrida anterior.
+concurrency:
+  group: e2e-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ORG: GreenITESO-Proyecto-Integrador
+  # Rama de Backend y Frontend contra la que se prueba el PR.
+  STACK_BRANCH: dev
+  BASE_URL: http://localhost:8080
+  AUTH_MODE: mock
+  TEST_STUDENT_EMAIL: e2e.student@iteso.mx
+  TEST_ADMIN_EMAIL: e2e.admin@iteso.mx
+  TEST_LEADER_EMAIL: e2e.leader@iteso.mx
+  TEST_CAMPAIGN_LEADER_EMAIL: e2e.campaign.leader@iteso.mx
+  TEST_STORE_EMAIL: e2e.store@iteso.mx
+
+jobs:
+  e2e:
+    name: E2E PR #${{ github.event.pull_request.number }}
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout de pruebas (PR)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout del Backend (${{ env.STACK_BRANCH }})
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.ORG }}/GreenITESO-Backend
+          ref: ${{ env.STACK_BRANCH }}
+          path: _stack/backend
+          persist-credentials: false
+
+      - name: Checkout del Frontend (${{ env.STACK_BRANCH }})
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ env.ORG }}/GreenITESO-Frontend
+          ref: ${{ env.STACK_BRANCH }}
+          path: _stack/frontend
+          persist-credentials: false
+
+      - name: Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias de las pruebas
+        run: |
+          python -m pip install --quiet uv
+          uv sync --frozen
+          uv run playwright install --with-deps chromium
+
+      - name: Levantar el stack
+        env:
+          BACKEND_DIR: ${{ github.workspace }}/_stack/backend
+          FRONTEND_DIR: ${{ github.workspace }}/_stack/frontend
+        run: ci/stack/up.sh
+
+      - name: Correr la suite (full)
+        env:
+          AUTH_STATE_DIR: ${{ runner.temp }}/e2e-auth
+        run: uv run pytest -m full -n 4 --junitxml=reporting/junit.xml
+
+      - name: Resumen
+        if: always()
+        run: |
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          print("## E2E PR (stack: `${{ env.STACK_BRANCH }}`)")
+          junit = Path("reporting/junit.xml")
+          if not junit.exists():
+              print("No hubo resultados: la suite no llegó a correr (revisa el paso del stack).")
+              raise SystemExit
+          suite = ET.parse(junit).getroot()
+          suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
+          total, failures, errors, skipped = (int(suite.get(k, 0)) for k in ("tests", "failures", "errors", "skipped"))
+          print(f"**{total - failures - errors - skipped} pasaron**, {failures + errors} fallaron, {skipped} omitidas.\n")
+          for case in suite.iter("testcase"):
+              if case.find("failure") is not None or case.find("error") is not None:
+                  print(f"- ❌ `{case.get('name')}`")
+          EOF
+
+      - name: Logs del stack
+        if: always()
+        run: |
+          mkdir -p reporting/logs
+          BACKEND_DIR=_stack/backend FRONTEND_DIR=_stack/frontend \
+            docker compose -f ci/stack/compose.yaml logs --no-color > reporting/logs/stack.log 2>&1 || true
+
+      - name: Subir reportes
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          path: reporting/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Tirar el stack
+        if: always()
+        env:
+          BACKEND_DIR: _stack/backend
+          FRONTEND_DIR: _stack/frontend
+        run: ci/stack/down.sh

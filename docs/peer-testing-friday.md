@@ -42,6 +42,27 @@ Delivery: Friday, 20 November 2026. The assignments below transcribe the teacher
 | T2-06 | Create, edit and delete an own feed post; verify changes after reload and reject edits by another user. Use disposable data. | [FEED-02](https://lab.ferramos.com/evidence/FEED-02.json), [QA09B](https://lab.ferramos.com/evidence/final-QA09B.json) |
 | T2-07 | Where available, a feed image loads after upload and a Like persists after reload; record the deployed revision. | [QA28B](https://lab.ferramos.com/evidence/final-QA28B.json); real photo storage was not verified in that snapshot. [Frontend #122](https://github.com/GreenITESO-Proyecto-Integrador/GreenITESO-Frontend/pull/122) also records an accepted filter-refresh race; its deployment is not established here. |
 
+### Dashboard coverage for T2-01
+
+The automated Dashboard module (`tests/Dashboard/`) complements T2-01 with these executable cases:
+
+| TC | Automated coverage | Type |
+| --- | --- | --- |
+| TC-03-001 | Student impact metrics match `profile/me` in es-MX format | Real API |
+| TC-03-002 | Four-week impact trend has three charts and matching week labels | Real API |
+| TC-03-003 | Active missions, progress and “Registrar acción” navigation | Real API |
+| TC-03-004 | State/scope filters, no-filter match state and pagination | Real API |
+| TC-03-005 | New-user zero metrics, empty campaigns and empty missions | Mocked UI state |
+| TC-03-006 | Admin dashboard hides student-only sections | Real API |
+| TC-03-007 | Profile load error and retry | Mocked error/retry |
+| TC-03-008 | Trend load error and retry | Mocked error/retry |
+| TC-03-009 | Campaign and mission load errors and retry | Mocked error/retry |
+| TC-03-010 | Opening a participating campaign detail | Real API |
+| TC-03-011 | Reload preserves the authenticated dashboard and reloaded metrics | Real API |
+| TC-03-012 | Mobile dashboard sections render without horizontal overflow | Real API |
+
+T2-01 requires an actual peer run in the selected environment. A passing automated case does not replace a recorded result: each run must include the environment, browser, viewport, frontend/backend revisions, status and sanitized evidence.
+
 ## Team 3 tests Team 1: actions, points and gamification
 
 | Case | Expected result | Historical starting point |

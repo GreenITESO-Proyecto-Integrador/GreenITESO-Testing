@@ -1,0 +1,88 @@
+# Stack desechable de GreenITESO para correr el E2E contra una rama (dev / preprod) sin desplegarla.
+#
+# Igual que prod: el navegador solo habla con el frontend (nginx en :8080), que manda /api/ y /ws/ al
+# backend. El backend corre en modo local (DJANGO_DEPLOYED=false) con MICROSOFT_AUTH_MODE=mock, así
+# que las pruebas sacan sesiones con AUTH_MODE=mock, sin Microsoft ni tokens guardados.
+#
+# Uso (lo hace ci/stack/up.sh):
+#   BACKEND_DIR=../GreenITESO-Backend FRONTEND_DIR=../GreenITESO-Frontend \
+#     docker compose -f ci/stack/compose.yaml -p greeniteso-e2e up -d --build --wait
+name: greeniteso-e2e
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: greeniteso
+      POSTGRES_USER: greeniteso
+      POSTGRES_PASSWORD: greeniteso-e2e
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greeniteso -d greeniteso"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    build:
+      context: ${BACKEND_DIR:?BACKEND_DIR apunta al checkout del backend}
+      dockerfile: Dockerfile
+      target: development
+    environment:
+      DJANGO_ENV: dev
+      DJANGO_DEPLOYED: "false"
+      DJANGO_CONNECTION_ROLE: app
+      DJANGO_SECRET_KEY: e2e-only-not-a-secret
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,backend
+      CORS_ALLOWED_ORIGINS: http://localhost:8080
+      MICROSOFT_AUTH_MODE: mock
+      ALLOWED_EMAIL_DOMAIN: iteso.mx
+      DATABASE_URL: postgresql://greeniteso:greeniteso-e2e@db:5432/greeniteso
+      DATABASE_URL_UNPOOLED: postgresql://greeniteso:greeniteso-e2e@db:5432/greeniteso
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /workspace/app
+    # Sin GCS, las imágenes del feed se guardan en MEDIA_ROOT; el usuario de la imagen (uid 1000) no
+    # puede crear esa carpeta en /workspace, así que va en un tmpfs suyo.
+    tmpfs:
+      - /workspace/media:uid=1000,gid=1000
+    # Un solo proceso: la capa de canales es en memoria, así el websocket recibe las notificaciones.
+    # Antes de servir: migraciones de la rama y catálogo de acciones (las campañas necesitan misiones).
+    command:
+      - sh
+      - -c
+      - >-
+        python manage.py migrate --no-input &&
+        python manage.py load_catalog &&
+        exec uvicorn green_iteso.asgi:application --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8000/api/v1/auth/login/ -X OPTIONS || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+
+  frontend:
+    build:
+      context: ${FRONTEND_DIR:?FRONTEND_DIR apunta al checkout del frontend}
+      dockerfile: Dockerfile
+      args:
+        # Mismo origen que el navegador: nginx reenvía /api/ y /ws/ al backend.
+        VITE_API_BASE_URL: http://localhost:8080
+        VITE_MICROSOFT_CLIENT_ID: e2e-mock-client
+    environment:
+      BACKEND_URL: http://backend:8000
+      # Host que ve Django: con él arma las URLs absolutas (p. ej. la imagen subida al feed). Tiene
+      # que ser el origen del navegador; "backend" no lo puede abrir el navegador y URLField lo rechaza.
+      BACKEND_HOST: localhost:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 30

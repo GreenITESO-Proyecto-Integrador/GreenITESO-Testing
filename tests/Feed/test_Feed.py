@@ -84,3 +84,34 @@ def test_00_09_010_checkCannotEditOthersPost(page):
 @allure.description("Feed: Dar y quitar like actualiza el botón y el contador, y ambos se mantienen al recargar")
 def test_00_09_011_checkLikePersistsOnReload(page):
     assert_action(actions.test_00_09_011_checkLikePersistsOnReload, page)
+
+
+@pytest.mark.sanity
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_09_012_checkFilterByPostType")
+@allure.description("Feed: Los chips de tipo filtran entre Todos, Evidencias y Anuncios mandando post_type")
+def test_00_09_012_checkFilterByPostType(page):
+    assert_action(actions.test_00_09_012_checkFilterByPostType, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_09_013_checkOrderByPopular")
+@allure.description(
+    "Feed: Ordenar por Populares pide ordering=popular, respeta likes descendentes y vuelve a Recientes"
+)
+def test_00_09_013_checkOrderByPopular(page):
+    assert_action(actions.test_00_09_013_checkOrderByPopular, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_09_014_checkPublishWhileFilterHidesPost")
+@allure.description("Feed: Publicar con un filtro que oculta el post muestra el aviso y 'Ver en Todos' lo revela")
+def test_00_09_014_checkPublishWhileFilterHidesPost(page):
+    assert_action(actions.test_00_09_014_checkPublishWhileFilterHidesPost, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_09_015_checkEmptyAndErrorStates")
+@allure.description("Feed: Sin publicaciones muestra el estado vacío y con error 500 muestra el aviso de error")
+def test_00_09_015_checkEmptyAndErrorStates(page):
+    assert_action(actions.test_00_09_015_checkEmptyAndErrorStates, page)

@@ -80,6 +80,19 @@ class Locators:
     FEED_SAVE_EDIT_BUTTON = "//button[normalize-space(.)='Guardar']"
     # aria-label "Like, N like(s)" y aria-pressed (FeedPost.tsx)
     FEED_LIKE_BUTTON = "//button[starts-with(@aria-label, 'Like, ')]"
+    FEED_TYPE_FILTER_GROUP_LABEL = "Filtrar por tipo de publicación"
+    FEED_ORDER_FILTER_GROUP_LABEL = "Ordenar publicaciones"
+    FEED_TYPE_PRESSED_CHIP = (
+        "//*[@role='group'][@aria-label='Filtrar por tipo de publicación']//button[@aria-pressed='true']"
+    )
+    FEED_ORDER_PRESSED_CHIP = "//*[@role='group'][@aria-label='Ordenar publicaciones']//button[@aria-pressed='true']"
+    FEED_HIDDEN_POST_BANNER = (
+        "//*[@role='status'][contains(normalize-space(.), 'no aparece con el filtro u orden que tienes activo')]"
+    )
+    FEED_EMPTY_TEXT = (
+        "//p[normalize-space(.)='No hay publicaciones por mostrar. ¡Sé el primero en compartir tu impacto!']"
+    )
+    FEED_LOAD_ERROR = "//*[normalize-space(.)='Error al cargar el muro social.']"
 
     # --- Notificaciones (pages/Notifications, NotificationToast, BadgeUnlockModal) ---
     NOTIFICATIONS_TITLE = "//h1[normalize-space(.)='Notificaciones']"

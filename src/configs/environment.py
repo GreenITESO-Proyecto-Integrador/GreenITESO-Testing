@@ -45,6 +45,8 @@ TEST_USERS = {
     "leader": os.getenv("TEST_LEADER_EMAIL", "qa.lider@iteso.mx"),
     # Líder de un clan propio para Campañas (el backend permite un solo liderazgo por usuario).
     "campaign_leader": os.getenv("TEST_CAMPAIGN_LEADER_EMAIL", "qa.lider.campanas@iteso.mx"),
+    # Cuenta propia de la Tienda: sus canjes cambian saldo e inventario y no se pueden deshacer.
+    "store": os.getenv("TEST_STORE_EMAIL", "qa.tienda@iteso.mx"),
 }
 
 REPORTING_DIR = ROOT_DIR / "reporting"

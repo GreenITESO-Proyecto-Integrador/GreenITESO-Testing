@@ -46,6 +46,7 @@ env:
   TEST_ADMIN_EMAIL: e2e.admin@iteso.mx
   TEST_LEADER_EMAIL: e2e.leader@iteso.mx
   TEST_CAMPAIGN_LEADER_EMAIL: e2e.campaign.leader@iteso.mx
+  TEST_STORE_EMAIL: e2e.store@iteso.mx
   # Opcional: PAT con permiso "Commit statuses: write" en Backend y Frontend para dejar ✅/❌ en el commit.
   HAS_STATUS_TOKEN: ${{ secrets.E2E_STATUS_TOKEN != '' }}
 

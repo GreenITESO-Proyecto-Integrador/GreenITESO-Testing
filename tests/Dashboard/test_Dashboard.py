@@ -59,3 +59,49 @@ def test_00_03_006_checkAdminSimpleDashboard(page):
 )
 def test_00_03_007_checkProfileLoadError(page):
     assert_action(actions.test_00_03_007_checkProfileLoadError, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_03_008_checkTrendLoadError")
+@allure.description(
+    "Dashboard: Si falla impact-trend se muestra el error con 'Reintentar' y la tendencia carga al reintentar"
+)
+def test_00_03_008_checkTrendLoadError(page):
+    assert_action(actions.test_00_03_008_checkTrendLoadError, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_03_009_checkCampaignsLoadError")
+@allure.description(
+    "Dashboard: Si falla la lista participando se muestran errores en campañas y misiones, con reintento funcional"
+)
+def test_00_03_009_checkCampaignsLoadError(page):
+    assert_action(actions.test_00_03_009_checkCampaignsLoadError, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_03_010_checkCampaignDetail")
+@allure.description(
+    "Dashboard: Abrir una campaña de 'Mis campañas' muestra su detalle y sus misiones"
+)
+def test_00_03_010_checkCampaignDetail(page):
+    assert_action(actions.test_00_03_010_checkCampaignDetail, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_03_011_checkReloadPersistence")
+@allure.description(
+    "Dashboard: Recargar conserva la sesión y vuelve a mostrar las métricas reales del perfil"
+)
+def test_00_03_011_checkReloadPersistence(page):
+    assert_action(actions.test_00_03_011_checkReloadPersistence, page)
+
+
+@pytest.mark.sanity
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_03_012_checkMobileLayout")
+@allure.description(
+    "Dashboard: En móvil se muestran las secciones principales sin desbordamiento horizontal"
+)
+def test_00_03_012_checkMobileLayout(page):
+    assert_action(actions.test_00_03_012_checkMobileLayout, page)

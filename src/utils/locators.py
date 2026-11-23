@@ -41,13 +41,30 @@ class Locators:
         "//*[contains(@class,'recharts-cartesian-axis-tick-value')]"
     )
     DASHBOARD_MY_CAMPAIGNS_TITLE = "//h2[normalize-space(.)='Mis campañas']"
+    DASHBOARD_MY_CAMPAIGN_CARD = (
+        "//section[.//h2[normalize-space(.)='Mis campañas']]"
+        "//*[@role='button'][.//*[@data-slot='card-title']]"
+    )
     DASHBOARD_MY_CAMPAIGN_CARD_TITLE = (
         "//section[.//h2[normalize-space(.)='Mis campañas']]//*[@role='button']//*[@data-slot='card-title']"
     )
     DASHBOARD_CAMPAIGNS_PAGINATION = "//nav[@aria-label='Paginación de campañas']"
+    DASHBOARD_CAMPAIGNS_ERROR_TITLE = "//h3[normalize-space(.)='No se pudieron cargar tus campañas']"
+    DASHBOARD_MISSIONS_ERROR_TITLE = "//h3[normalize-space(.)='No se pudieron cargar tus misiones']"
+    DASHBOARD_CAMPAIGNS_RETRY = (
+        "//section[.//h3[normalize-space(.)='No se pudieron cargar tus campañas']]"
+        "//button[normalize-space(.)='Reintentar']"
+    )
+    DASHBOARD_TREND_ERROR_TITLE = "//h3[normalize-space(.)='No se pudo cargar tu tendencia']"
+    DASHBOARD_TREND_ERROR_RETRY = (
+        "//section[.//h3[normalize-space(.)='No se pudo cargar tu tendencia']]"
+        "//button[normalize-space(.)='Reintentar']"
+    )
+    DASHBOARD_CAMPAIGN_DETAIL_DIALOG = "//*[@role='dialog'][.//h2]"
     DASHBOARD_EMPTY_CAMPAIGNS = "//h3[normalize-space(.)='Aún no participas en campañas']"
     DASHBOARD_NO_FILTER_MATCH = "//h3[normalize-space(.)='Ninguna campaña coincide con los filtros']"
     DASHBOARD_JOIN_CAMPAIGN_LINK = "//a[normalize-space(.)='Unirme a una campaña']"
+    DASHBOARD_ACTIVE_MISSIONS_TITLE = "//h2[normalize-space(.)='Misiones activas']"
     DASHBOARD_ACTIVE_GROUP_TITLES = "//section[.//h2[normalize-space(.)='Misiones activas']]//h3"
     DASHBOARD_NO_ACTIVE_MISSIONS = "//h3[normalize-space(.)='No tienes misiones activas']"
     DASHBOARD_PROFILE_ERROR_TITLE = "//h3[normalize-space(.)='No se pudo cargar tu impacto']"

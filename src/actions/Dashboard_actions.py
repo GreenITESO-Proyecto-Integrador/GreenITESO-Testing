@@ -435,3 +435,140 @@ def test_00_03_007_checkProfileLoadError(page: Page) -> bool:
         logger.error("Tras 'Reintentar' no carga 'Tu impacto'")
         return False
     return True
+
+
+def test_00_03_008_checkTrendLoadError(page: Page) -> bool:
+    login_as(page, _STUDENT_ROLE)
+    handle = mock_api_error(page, f"**{_TREND_PATH}", status=500)
+    go_to(page, "/")
+    wait_for_app_ready(page)
+    if not _is_visible(page, Locs.DASHBOARD_TREND_ERROR_TITLE, timeout=_TIMEOUT):
+        logger.error("No se ve el error 'No se pudo cargar tu tendencia'")
+        return False
+    if not handle.requests:
+        logger.error("El mock de impact-trend no interceptó ninguna petición")
+        return False
+    if not _is_visible(page, Locs.DASHBOARD_IMPACT_TITLE, timeout=_TIMEOUT):
+        logger.error("El perfil dejó de mostrarse por el fallo de impact-trend")
+        return False
+
+    handle.restore()
+    page.locator(Locs.DASHBOARD_TREND_ERROR_RETRY).first.click()
+    if not _is_visible(page, Locs.DASHBOARD_TREND_TITLE, timeout=_TIMEOUT):
+        logger.error("Tras 'Reintentar' no carga la tendencia")
+        return False
+    return True
+
+
+def test_00_03_009_checkCampaignsLoadError(page: Page) -> bool:
+    login_as(page, _STUDENT_ROLE)
+    handle = mock_api_error(page, _is_participating_list, status=500)
+    go_to(page, "/")
+    wait_for_app_ready(page)
+    if not _is_visible(page, Locs.DASHBOARD_CAMPAIGNS_ERROR_TITLE, timeout=_TIMEOUT):
+        logger.error("No se ve el error de 'Mis campañas'")
+        return False
+    if not _is_visible(page, Locs.DASHBOARD_MISSIONS_ERROR_TITLE, timeout=_TIMEOUT):
+        logger.error("No se ve el error de 'Misiones activas'")
+        return False
+    if not handle.requests:
+        logger.error("El mock de campañas participantes no interceptó ninguna petición")
+        return False
+
+    handle.restore()
+    page.locator(Locs.DASHBOARD_CAMPAIGNS_RETRY).first.click()
+    recovered = wait_until(
+        lambda: page.locator(Locs.DASHBOARD_CAMPAIGNS_ERROR_TITLE).count() == 0
+        and (
+            page.locator(Locs.DASHBOARD_MY_CAMPAIGN_CARD).count() > 0
+            or locator_has_visible_match(page.locator(Locs.DASHBOARD_EMPTY_CAMPAIGNS), timeout=200)
+            or locator_has_visible_match(page.locator(Locs.DASHBOARD_NO_FILTER_MATCH), timeout=200)
+        ),
+        page,
+        timeout=_TIMEOUT,
+    )
+    if not recovered:
+        logger.error("El error de campañas siguió visible después de reintentar")
+        return False
+    return True
+
+
+def test_00_03_010_checkCampaignDetail(page: Page) -> bool:
+    login_as(page, _STUDENT_ROLE)
+    body = capture_json_response(page, _is_participating_list, lambda: go_to(page, "/"))
+    wait_for_app_ready(page)
+    campaigns = _all_participating(page, body)
+    if not campaigns:
+        logger.info("Sin campañas participantes: el detalle no puede abrirse")
+        return _is_visible(page, Locs.DASHBOARD_EMPTY_CAMPAIGNS, timeout=_TIMEOUT)
+
+    campaign = campaigns[0]
+    campaign_id = str(campaign["id"])
+    title = str(campaign["title"])
+    detail_path = f"/api/v1/campaigns/{campaign_id}/"
+    card = page.locator(Locs.DASHBOARD_MY_CAMPAIGN_CARD).first
+    if not _is_visible(page, Locs.DASHBOARD_MY_CAMPAIGN_CARD, timeout=_TIMEOUT):
+        logger.error("No se encuentra ninguna tarjeta dentro de 'Mis campañas'")
+        return False
+
+    detail = capture_json_response(
+        page,
+        lambda url: urlsplit(url).path == detail_path,
+        lambda: card.click(),
+    )
+    if not _is_visible(page, Locs.DASHBOARD_CAMPAIGN_DETAIL_DIALOG, timeout=_TIMEOUT):
+        logger.error("No se abrió el diálogo de detalle de la campaña")
+        return False
+    dialog_text = page.locator(Locs.DASHBOARD_CAMPAIGN_DETAIL_DIALOG).text_content(timeout=_SHORT_TIMEOUT) or ""
+    expected_title = str(detail.get("title", title))
+    if expected_title not in dialog_text:
+        logger.error("El detalle no muestra el título '%s'", expected_title)
+        return False
+    if "Misiones" not in dialog_text:
+        logger.error("El detalle no muestra la sección 'Misiones'")
+        return False
+    return True
+
+
+def test_00_03_011_checkReloadPersistence(page: Page) -> bool:
+    login_as(page, _STUDENT_ROLE)
+    capture_json_response(page, _is_path(_PROFILE_PATH), lambda: go_to(page, "/"))
+    wait_for_app_ready(page)
+
+    reloaded_profile: dict = capture_json_response(page, _is_path(_PROFILE_PATH), lambda: page.reload())
+    wait_for_app_ready(page)
+    reloaded_expected = _expected_tiles(reloaded_profile)
+    for label, expected_value in reloaded_expected.items():
+        if not _wait_equal(page, partial(_tile_value, page, label), expected_value):
+            logger.error("Después de recargar, '%s' no conserva '%s'", label, expected_value)
+            return False
+    if not _is_visible(page, Locs.DASHBOARD_TREND_TITLE, timeout=_TIMEOUT):
+        logger.error("La tendencia no reaparece después de recargar")
+        return False
+    if not _is_visible(page, Locs.DASHBOARD_MY_CAMPAIGNS_TITLE, timeout=_TIMEOUT):
+        logger.error("'Mis campañas' no reaparece después de recargar")
+        return False
+    return True
+
+
+def test_00_03_012_checkMobileLayout(page: Page) -> bool:
+    page.set_viewport_size({"width": 390, "height": 844})
+    login_as(page, _STUDENT_ROLE)
+    go_to(page, "/")
+    wait_for_app_ready(page)
+    for label, xpath in (
+        ("Tu impacto", Locs.DASHBOARD_IMPACT_TITLE),
+        ("Tendencia", Locs.DASHBOARD_TREND_TITLE),
+        ("Mis campañas", Locs.DASHBOARD_MY_CAMPAIGNS_TITLE),
+        ("Misiones activas", Locs.DASHBOARD_ACTIVE_MISSIONS_TITLE),
+    ):
+        if not _is_visible(page, xpath, timeout=_TIMEOUT):
+            logger.error("En móvil no se ve la sección '%s'", label)
+            return False
+    has_horizontal_overflow = page.evaluate(
+        "document.documentElement.scrollWidth > document.documentElement.clientWidth"
+    )
+    if has_horizontal_overflow:
+        logger.error("El dashboard presenta desbordamiento horizontal en 390px")
+        return False
+    return True

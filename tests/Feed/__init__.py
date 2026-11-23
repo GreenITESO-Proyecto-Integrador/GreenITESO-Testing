@@ -23,7 +23,7 @@ Notas de implementación:
   La imagen de 003 es un PNG de 1x1 generado en memoria; la de 004 es el favicon del propio frontend.
 - La subida va a `/api/v1/uploads/` (frontend y backend coinciden). Borrar una publicación también
   borra su imagen (`feed/images.py`), así que no hace falta limpieza aparte de las imágenes.
-- Los kudos (`PostLike`) se borran en cascada con su publicación. Estos tests no dan kudos.
+- Los kudos (`PostLike`) se borran en cascada con su publicación. Solo TC-09-011 da (y quita) un kudo.
 - Validación de archivos en el cliente (`lib/api/upload.ts`): solo tipo y tamaño. 005 comprueba
   además que nada llegue al servidor.
 - 007 comprueba '(Editado)', que el frontend muestra solo si `updated_at - created_at > 3 s`.

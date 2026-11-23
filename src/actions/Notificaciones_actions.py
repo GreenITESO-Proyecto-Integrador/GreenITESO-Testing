@@ -515,4 +515,10 @@ def test_00_10_009_checkCannotTouchOthersNotification(page: Page) -> bool:
     if not locator_has_visible_match(card.get_by_role("button", name="Marcar como leída"), timeout=_SHORT_TIMEOUT):
         logger.error("La notificación de S ya no aparece como no leída en la UI")
         return False
+
+    # Control positivo: la misma ruta sí funciona para el dueño, así que el 404 de arriba no es una ruta mal armada.
+    status = api.call("student", "PATCH", detail_path, data={"is_read": True}).status
+    if status != 200:
+        logger.error("PATCH de la notificación como su dueño → %s, se esperaba 200", status)
+        return False
     return True

@@ -24,5 +24,6 @@ Notas:
 - Las notificaciones creadas llevan el marcador de la corrida; la limpieza debe marcarlas como borradas.
 - TC-10-009 no está en Notion: cubre T2-03 de docs/peer-testing-friday.md. Crea su propia notificación
   (no reusa N1..N3, que 003 deja leídas) y `leader` intenta PATCH/DELETE por API. Se espera 404 y no 403,
-  porque el backend filtra por dueño y no revela que la notificación existe.
+  porque el backend filtra por dueño y no revela que la notificación existe. Al final, S marca la suya como
+  leída por la misma ruta (200) como control positivo. Igual que 001, deja una propuesta REJECTED más.
 """

@@ -6,6 +6,7 @@ Cada publicación lleva un texto único con el marcador de la corrida (`unique_n
 limpieza de test_data.py la borra al terminar.
 """
 
+import re
 import struct
 import zlib
 from typing import Any
@@ -34,6 +35,9 @@ _CONFIRM_DELETE_TEXT = "¿Estás seguro de que deseas eliminar esta publicación
 _EDITED_SUFFIX = " editado"
 # Imagen estable servida por la propia app (public/ del frontend); el backend acepta cualquier URL.
 _STABLE_IMAGE_URL = f"{env.BASE_URL.rstrip('/')}/logo-greeniteso.svg"
+# Usuario de prueba "ajeno" de TC-09-010/011. No es admin: el admin sí puede borrar posts de otros (moderación).
+_OTHER_USER_ROLE = "leader"
+_LIKE_LABEL_RE = re.compile(r"Like, (\d+) likes?")
 
 # Estado compartido entre los tests del módulo (todos corren en el mismo proceso, en orden).
 _STATE: dict[str, Any] = {}
@@ -462,3 +466,104 @@ def test_00_09_009_checkNoEditOnOthersPosts(page: Page) -> bool:
             logger.error("Aparece el botón '%s' en una publicación de otro autor", label)
             return False
     return True
+
+
+# --- privadas: likes ------------------------------------------------------------------------
+
+
+def _like_state(card: Locator) -> tuple[bool, int] | None:
+    """Read (liked_by_me, likes_count) from the card's Like button (aria-pressed + aria-label)."""
+    button = _within(card, Locs.FEED_LIKE_BUTTON).first
+    if button.count() == 0:
+        return None
+    match = _LIKE_LABEL_RE.fullmatch(button.get_attribute("aria-label") or "")
+    if not match:
+        return None
+    return button.get_attribute("aria-pressed") == "true", int(match.group(1))
+
+
+def _wait_like_state(page: Page, card: Locator, expected: tuple[bool, int]) -> bool:
+    if wait_until(lambda: _like_state(card) == expected, page, timeout=_SHORT_TIMEOUT):
+        return True
+    logger.error("El botón Like muestra %s, se esperaba %s", _like_state(card), expected)
+    return False
+
+
+def _api_like_state(page: Page, post_id: int) -> tuple[bool, int]:
+    stored = api_for_page(page).json("student", "GET", f"{_FEED_API_PATH}{post_id}/")
+    return bool(stored.get("liked_by_me")), int(stored.get("likes_count") or 0)
+
+
+def _toggle_like(page: Page, card: Locator, post_id: int, *, method: str) -> bool:
+    """Click Like and wait for the POST (like) or DELETE (unlike) answer from the API."""
+    path = f"{_FEED_API_PATH}{post_id}/like/"
+    with page.expect_response(lambda r: r.request.method == method and urlsplit(r.url).path == path) as info:
+        _within(card, Locs.FEED_LIKE_BUTTON).first.click()
+    if info.value.status != 200:
+        logger.error("%s %s → %s", method, path, info.value.status)
+        return False
+    return True
+
+
+def _reload_feed(page: Page, content: str) -> Locator:
+    page.reload(wait_until="domcontentloaded")
+    wait_for_app_ready(page)
+    return _wait_card(page, content)
+
+
+# --- tests: matriz T2 (no están en Notion) --------------------------------------------------
+
+
+def test_00_09_010_checkCannotEditOthersPost(page: Page) -> bool:
+    post = _create_post_via_api(page, "student", "Feed ajeno 010")
+    path = f"{_FEED_API_PATH}{post['id']}/"
+    api = api_for_page(page)
+
+    for method, data in (("PATCH", {"content": post["content"] + _EDITED_SUFFIX}), ("DELETE", None)):
+        status = api.call(_OTHER_USER_ROLE, method, path, data=data).status
+        if status != 403:
+            logger.error("%s del post de S como %s → %s, se esperaba 403", method, _OTHER_USER_ROLE, status)
+            return False
+
+    stored = api.json("student", "GET", path)
+    if stored.get("content") != post["content"]:
+        logger.error("El post de S cambió tras el intento de %s: %r", _OTHER_USER_ROLE, stored.get("content"))
+        return False
+
+    _open_feed(page)
+    _wait_card(page, post["content"])
+    card = _reload_feed(page, post["content"])
+    if _visible_in(card, Locs.FEED_EDITED_LABEL, timeout=500):
+        logger.error("El post de S aparece como '(Editado)' sin que S lo editara")
+        return False
+    return True
+
+
+def test_00_09_011_checkLikePersistsOnReload(page: Page) -> bool:
+    post = _create_post_via_api(page, _OTHER_USER_ROLE, "Feed like 011")
+    _open_feed(page)
+    card = _wait_card(page, post["content"])
+    before = _like_state(card)
+    if before is None or before[0]:
+        logger.error("Estado inicial del botón Like inesperado: %s", before)
+        return False
+    liked = (True, before[1] + 1)
+
+    if not _toggle_like(page, card, post["id"], method="POST") or not _wait_like_state(page, card, liked):
+        return False
+    card = _reload_feed(page, post["content"])
+    if not _wait_like_state(page, card, liked):
+        logger.error("El like no se mantuvo después de recargar")
+        return False
+    if _api_like_state(page, post["id"]) != liked:
+        logger.error("La API tiene %s, se esperaba %s", _api_like_state(page, post["id"]), liked)
+        return False
+
+    # Quitar el like también debe persistir.
+    if not _toggle_like(page, card, post["id"], method="DELETE") or not _wait_like_state(page, card, before):
+        return False
+    card = _reload_feed(page, post["content"])
+    if not _wait_like_state(page, card, before):
+        logger.error("Quitar el like no se mantuvo después de recargar")
+        return False
+    return _api_like_state(page, post["id"]) == before

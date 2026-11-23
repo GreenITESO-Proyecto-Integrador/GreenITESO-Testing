@@ -68,3 +68,12 @@ def test_00_10_007_checkLoadError(page):
 )
 def test_00_10_008_checkBadgeCelebration(page):
     assert_action(actions.test_00_10_008_checkBadgeCelebration, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_10_009_checkCannotTouchOthersNotification")
+@allure.description(
+    "Notificaciones: Otro usuario no puede ver, marcar ni borrar una notificación de S (404) y S la conserva sin leer"
+)
+def test_00_10_009_checkCannotTouchOthersNotification(page):
+    assert_action(actions.test_00_10_009_checkCannotTouchOthersNotification, page)

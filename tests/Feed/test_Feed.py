@@ -70,3 +70,17 @@ def test_00_09_008_checkDeleteOwnPost(page):
 @allure.description("Feed: En publicaciones de otros no aparecen 'Editar' ni 'Eliminar'")
 def test_00_09_009_checkNoEditOnOthersPosts(page):
     assert_action(actions.test_00_09_009_checkNoEditOnOthersPosts, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_09_010_checkCannotEditOthersPost")
+@allure.description("Feed: Otro usuario (no admin) recibe 403 al editar o borrar un post de S y el post no cambia")
+def test_00_09_010_checkCannotEditOthersPost(page):
+    assert_action(actions.test_00_09_010_checkCannotEditOthersPost, page)
+
+
+@pytest.mark.full
+@pytest.mark.dependency(name="test_00_09_011_checkLikePersistsOnReload")
+@allure.description("Feed: Dar y quitar like actualiza el botón y el contador, y ambos se mantienen al recargar")
+def test_00_09_011_checkLikePersistsOnReload(page):
+    assert_action(actions.test_00_09_011_checkLikePersistsOnReload, page)

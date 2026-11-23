@@ -12,6 +12,8 @@ Casos del test plan (Notion: GreenITESO — Test Plan):
 - TC-09-007 Editar una publicación propia
 - TC-09-008 Eliminar una publicación propia
 - TC-09-009 Ocultar editar y eliminar en publicaciones de otros
+- TC-09-010 Impedir que otro usuario edite o borre una publicación ajena  [extra: matriz T2-06]
+- TC-09-011 Mantener el like al recargar  [extra: matriz T2-07]
 
 Notas de implementación:
 
@@ -21,10 +23,15 @@ Notas de implementación:
   La imagen de 003 es un PNG de 1x1 generado en memoria; la de 004 es el favicon del propio frontend.
 - La subida va a `/api/v1/uploads/` (frontend y backend coinciden). Borrar una publicación también
   borra su imagen (`feed/images.py`), así que no hace falta limpieza aparte de las imágenes.
-- Los kudos (`PostLike`) se borran en cascada con su publicación. Estos tests no dan kudos.
+- Los kudos (`PostLike`) se borran en cascada con su publicación. Solo TC-09-011 da (y quita) un kudo.
 - Validación de archivos en el cliente (`lib/api/upload.ts`): solo tipo y tamaño. 005 comprueba
   además que nada llegue al servidor.
 - 007 comprueba '(Editado)', que el frontend muestra solo si `updated_at - created_at > 3 s`.
   Como 002 y 007 están separados por otros tests, siempre se cumple.
 - Sin mocks: todo el módulo pega a la API real.
+- TC-09-010 y 011 no están en Notion: cubren T2-06 y T2-07 de docs/peer-testing-friday.md.
+  El usuario ajeno es `leader` y no `admin`, porque el admin sí puede borrar posts de otros (moderación).
+- TC-09-011: S da like a un post de `leader`, recarga, lo quita y recarga. El backend avisa al autor
+  una vez ('Nuevo like', sin marcador), así que `leader` se queda con esa notificación; los likes se
+  borran en cascada con el post.
 """

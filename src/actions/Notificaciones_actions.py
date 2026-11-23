@@ -43,6 +43,8 @@ _ALL_READ_TEXT = "Estás al día."
 _EMPTY_PAGE: dict[str, Any] = {"count": 0, "next": None, "previous": None, "results": [], "unread_count": 0}
 _BADGE_TITLE = "¡Nueva insignia desbloqueada!"
 _BADGE_NAMES = ("Guardián del agua", "Héroe del reciclaje")
+# Usuario de prueba que intenta tocar las notificaciones de S (TC-10-009); no es admin a propósito.
+_OTHER_USER_ROLE = "leader"
 
 # Estado compartido por los tests del módulo (mismo proceso, en orden): títulos N1..N3 y marcador.
 _STATE: dict[str, Any] = {}
@@ -475,5 +477,48 @@ def test_00_10_008_checkBadgeCelebration(page: Page) -> bool:
         timeout=_SHORT_TIMEOUT,
     ):
         logger.error("No se mandó el PATCH is_read=true de la insignia al abrir el perfil")
+        return False
+    return True
+
+
+def test_00_10_009_checkCannotTouchOthersNotification(page: Page) -> bool:
+    api = api_for_page(page)
+    title = _create_rejected_proposal_notification(page, api)
+    notification = _find_api_notification(api, title)
+    if notification is None or notification.get("is_read"):
+        raise RuntimeError(f"La notificación de {title!r} no quedó sin leer para S")
+    detail_path = f"{_NOTIFICATIONS_PATH}{notification['id']}/"
+
+    # El backend filtra por dueño, así que para otro usuario la notificación "no existe" (404, no 403).
+    for method, data in (("PATCH", {"is_read": True}), ("DELETE", None)):
+        status = api.call(_OTHER_USER_ROLE, method, detail_path, data=data).status
+        if status != 404:
+            logger.error("%s de la notificación de S como %s → %s, se esperaba 404", method, _OTHER_USER_ROLE, status)
+            return False
+    others = {str(item.get("id")) for item in api.pages(_OTHER_USER_ROLE, _NOTIFICATIONS_PATH)}
+    if str(notification["id"]) in others:
+        logger.error("La notificación de S aparece en la lista de %s", _OTHER_USER_ROLE)
+        return False
+
+    stored = _find_api_notification(api, title)
+    if stored is None or stored.get("is_read"):
+        logger.error("La notificación de S cambió tras los intentos de %s: %s", _OTHER_USER_ROLE, stored)
+        return False
+
+    login_as(page, "student")
+    if not _open_notifications_page(page):
+        return False
+    card = _card(page, title)
+    if not locator_has_visible_match(card, timeout=_LONG_TIMEOUT):
+        logger.error("S ya no ve su notificación %s", title)
+        return False
+    if not locator_has_visible_match(card.get_by_role("button", name="Marcar como leída"), timeout=_SHORT_TIMEOUT):
+        logger.error("La notificación de S ya no aparece como no leída en la UI")
+        return False
+
+    # Control positivo: la misma ruta sí funciona para el dueño, así que el 404 de arriba no es una ruta mal armada.
+    status = api.call("student", "PATCH", detail_path, data={"is_read": True}).status
+    if status != 200:
+        logger.error("PATCH de la notificación como su dueño → %s, se esperaba 200", status)
         return False
     return True

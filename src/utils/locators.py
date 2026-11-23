@@ -78,6 +78,8 @@ class Locators:
     FEED_DELETE_POST_BUTTON = "//button[@title='Eliminar publicación']"
     FEED_EDIT_TEXTAREA = "//textarea[not(@placeholder)]"
     FEED_SAVE_EDIT_BUTTON = "//button[normalize-space(.)='Guardar']"
+    # aria-label "Like, N like(s)" y aria-pressed (FeedPost.tsx)
+    FEED_LIKE_BUTTON = "//button[starts-with(@aria-label, 'Like, ')]"
 
     # --- Notificaciones (pages/Notifications, NotificationToast, BadgeUnlockModal) ---
     NOTIFICATIONS_TITLE = "//h1[normalize-space(.)='Notificaciones']"

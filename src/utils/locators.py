@@ -119,6 +119,26 @@ class Locators:
     LEADERBOARD_PAGER_PREV = "//nav[starts-with(@aria-label, 'Paginación de')]//button[@aria-label='Página anterior']"
     LEADERBOARD_PAGER_NEXT = "//nav[starts-with(@aria-label, 'Paginación de')]//button[@aria-label='Página siguiente']"
 
+    # --- Catálogo de acciones (pages/ActionCatalog) ---
+    CATALOG_TITLE = "//main//h1[normalize-space(.)='Catálogo de acciones']"
+    CATALOG_LOADING = "//*[@role='status'][contains(normalize-space(.), 'Cargando catálogo')]"
+    CATALOG_CARD = "//main//ul/li//*[@data-slot='card']"
+    CATALOG_CARD_TITLE = "//main//ul/li//*[@data-slot='card-title']"
+    CATALOG_CARD_POINTS = "//main//ul/li//*[@data-slot='card']//span[contains(normalize-space(.), ' pts')]"
+    CATALOG_NO_IMPACT_NOTICE = "//main//ul/li//*[@data-slot='card'][contains(normalize-space(.), 'Impacto ambiental pendiente de calibrar')]"
+    CATALOG_EMPTY_TITLE = "//main//h2[normalize-space(.)='No hay acciones activas']"
+    CATALOG_ERROR_TITLE = "//main//h2[normalize-space(.)='No se pudo cargar el catálogo']"
+    CATALOG_RETRY_BUTTON = "//main//button[normalize-space(.)='Reintentar']"
+    # Relativos a una tarjeta (card.locator(Locs.X)); llevan "xpath=" como los de Tienda.
+    CATALOG_CARD_DESCRIPTION = "xpath=.//p[contains(@class,'text-sm')][not(ancestor::button)]"
+    CATALOG_CARD_EXPAND_BUTTON = "xpath=.//button[starts-with(normalize-space(.),'Ver más')]"
+    CATALOG_CARD_COLLAPSE_BUTTON = "xpath=.//button[starts-with(normalize-space(.),'Ver menos')]"
+
+    @staticmethod
+    def catalog_card_with_name(name: str) -> str:
+        """Tarjeta del catálogo cuyo título contiene `name`."""
+        return f"//main//ul/li//*[@data-slot='card'][.//*[@data-slot='card-title'][contains(normalize-space(.), '{name}')]]"
+
     # --- Perfil (pages/Profile) ---
     PROFILE_NAME_TITLE = "//main//h1"
 

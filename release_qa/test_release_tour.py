@@ -32,7 +32,7 @@ CAMPAIGN_STEPS = [
 def screenshot(page, name):
     directory = os.environ.get("TEAM2_TOUR_EVIDENCE")
     if directory:
-        page.screenshot(path=Path(directory, name), animations="disabled")
+        page.screenshot(path=Path(directory, page.context.browser.browser_type.name, name), animations="disabled")
 
 
 def assert_step(page, label, path):

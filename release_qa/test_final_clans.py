@@ -27,7 +27,7 @@ def clans(browser: Browser):
     assert env.AUTH_MODE == "mock"
 
     evidence = os.getenv("FINAL_QA_CLAN_EVIDENCE")
-    output = Path(evidence) if evidence else None
+    output = Path(evidence, browser.browser_type.name) if evidence else None
     mobile = os.getenv("FINAL_QA_MOBILE") == "1"
     viewport = {"width": 390, "height": 844} if mobile else {"width": 1440, "height": 900}
     suffix = uuid4().hex[:6]

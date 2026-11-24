@@ -47,7 +47,7 @@ def browser_context_args(browser_context_args):
 @pytest.fixture
 def journey(browser, browser_context_args, request):
     case = request.node.name.split("_")[1].upper().replace("T1", "T1-")
-    dest = Path(EVIDENCE, case) if EVIDENCE else None
+    dest = Path(EVIDENCE, browser.browser_type.name, case) if EVIDENCE else None
     if dest:
         dest.mkdir(parents=True, exist_ok=True)
     options = dict(browser_context_args)
@@ -167,7 +167,13 @@ def test_t103_two_refresh_token_rotations(journey):
         statuses.append(renewed.value.status)
         assert renewed.value.status == 200, f"Refresh {len(statuses)} returned {renewed.value.status}"
         assert_profile(page)
-        assert page.evaluate("([key, prior]) => sessionStorage.getItem(key) !== prior", [REFRESH, previous_token])
+        assert page.evaluate(
+            """([key, prior]) => {
+              const replacement = sessionStorage.getItem(key);
+              return Boolean(replacement) && replacement !== prior;
+            }""",
+            [REFRESH, previous_token],
+        ), "The browser must retain a new refresh token after each successful refresh"
         hold_for_recording(page)
     if dest:
         (dest / "renovaciones.txt").write_text(f"Renovación 1: HTTP {statuses[0]}\nRenovación 2: HTTP {statuses[1]}\n")

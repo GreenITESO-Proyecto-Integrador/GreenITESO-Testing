@@ -283,7 +283,9 @@ print(json.dumps([str(row.pk) for row in rows[:5]]))
         assert len([entry for entry in clan_state(targets[0])["members"] if entry[0] == user]) == 1
         api(page, f"{CLAN_API}{targets[4]}/join/", method="POST", status=400)
         assert user not in roster(clan_state(targets[4]))
-        assert profile["institutional_clan"] is not None
+        current_clan = api(page, PROFILE)["institutional_clan"]
+        assert current_clan is not None
+        assert current_clan["id"] == profile["institutional_clan"]["id"]
 
         go_to(page, "/clans")
         search = page.get_by_label("Buscar clanes por nombre")

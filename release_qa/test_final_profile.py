@@ -27,7 +27,6 @@ pytestmark = pytest.mark.full
 def isolated_stack():
     assert environment.BASE_URL == environment.API_BASE_URL == BASE
     assert environment.AUTH_MODE == "mock" and not environment.E2E_CLEANUP
-    OUT.mkdir(parents=True, exist_ok=True)
 
 
 def login_mock(page, email):
@@ -36,10 +35,12 @@ def login_mock(page, email):
 
 @contextmanager
 def actor(browser, label, *, email=None, onboard=True, role=None):
+    output = OUT / browser.browser_type.name
+    output.mkdir(parents=True, exist_ok=True)
     context = browser.new_context(
         base_url=BASE,
         viewport={"width": 1440, "height": 900},
-        record_video_dir=OUT / "video",
+        record_video_dir=output / "video",
         record_video_size={"width": 1440, "height": 900},
     )
     page = context.new_page()
@@ -76,11 +77,12 @@ def actor(browser, label, *, email=None, onboard=True, role=None):
     finally:
         context.close()
         if video:
-            video.path().replace(OUT / "video" / f"{label}.webm")
+            video.path().replace(output / "video" / f"{label}.webm")
 
 
 def capture(page, name):
-    page.screenshot(path=OUT / f"{name}.png", animations="disabled")
+    output = OUT / page.context.browser.browser_type.name
+    page.screenshot(path=output / f"{name}.png", animations="disabled")
 
 
 def link_click(page, control, path, http_status, *, with_body=False):
@@ -92,8 +94,8 @@ def link_click(page, control, path, http_status, *, with_body=False):
     return exchange.value.json() if with_body else None
 
 
-def note(name, lines):
-    (OUT / f"{name}.txt").write_text("\n".join(lines) + "\n")
+def note(browser, name, lines):
+    (OUT / browser.browser_type.name / f"{name}.txt").write_text("\n".join(lines) + "\n")
 
 
 def nickname_dialog(page, name):
@@ -136,7 +138,7 @@ def test_t121_nickname_free_insufficient_and_paid_persist(browser):
         saved = api(page, PROFILE)
         assert (saved["nickname"], saved["available_points"], saved["total_points"]) == (f"Eco final {suffix}", 18, 68)
         capture(page, "T1-21-persistencia")
-        note("T1-21-prueba", [
+        note(browser, "T1-21-prueba", [
             "Primer cambio por interfaz: HTTP 200, costo 0, siguiente costo 50.",
             "Con 0 puntos, el segundo cambio estuvo deshabilitado.",
             "Con 68 puntos disponibles, el segundo cambio cobró 50.",
@@ -150,6 +152,8 @@ def test_t122_self_deactivation_and_synthetic_reactivation(browser):
         page.goto("/profile")
         action = lab_action(suffix)
         credit(page, action)
+        # Reopen the profile after setup so live badge celebrations cannot cover the account controls.
+        page.reload()
         assert api(page, PROFILE)["total_points"] == 17
         page.get_by_role("button", name="Desactivar cuenta", exact=True).click()
         dialog = page.get_by_role("dialog", name="Desactivar cuenta")
@@ -181,7 +185,7 @@ def test_t122_self_deactivation_and_synthetic_reactivation(browser):
         impact = saved["impact_metrics"]
         assert all(float(impact[key]) == 0 for key in ("co2_kg", "water_liters", "plastic_kg"))
         capture(page, "T1-22-perfil-reiniciado")
-        note("T1-22-prueba", [
+        note(browser, "T1-22-prueba", [
             "La cuenta sintética inició con 17 puntos acumulados.",
             "El botón estuvo deshabilitado hasta marcar la confirmación. Desactivar devolvió HTTP 204 y volvió al acceso.",
             "Un nuevo inicio local con proveedor sintético reactivó el mismo ID.",
@@ -227,7 +231,7 @@ def test_t123_admin_filter_ban_and_unban(browser):
     with actor(browser, "T1-23-cuenta-restaurada", email=target, onboard=False) as (student, _, _):
         student.goto("/profile")
         assert api(student, PROFILE)["total_points"] == 17
-        note("T1-23-prueba", [
+        note(browser, "T1-23-prueba", [
             "El administrador encontró la cuenta sintética por correo y por identificador.",
             "El bloqueo y el desbloqueo desde la ventana Usuarios devolvieron HTTP 200.",
             "El filtro Baneados incluyó la cuenta bloqueada y el filtro No baneados incluyó la cuenta restaurada.",
@@ -285,7 +289,7 @@ print(json.dumps(2))
             capture(page, f"T1-24-{slug}")
         selector.select_option("ALL")
         expect(rows).to_have_count(3)
-        note("T1-24-prueba", [
+        note(browser, "T1-24-prueba", [
             "El historial mostró tres registros propios y excluyó la acción del otro estudiante sintético.",
             "Cada filtro consultó el backend real y devolvió un solo registro del estado elegido.",
             "Se verificaron acciones aprobadas, pendientes y rechazadas. Al volver a Todas, reaparecieron las tres.",

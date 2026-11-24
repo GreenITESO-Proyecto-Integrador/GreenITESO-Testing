@@ -1,6 +1,7 @@
 """11 · Clanes — /clans
 
 Tests: test_Clanes.py  →  actions: src/actions/Clanes_actions.py
+001–011 cubren TC-11-002 y TC-11-003. 012–025 cubren el resto.
 Casos del test plan (Notion: GreenITESO — Test Plan):
 
 - TC-11-001 Explorar clanes y buscarlos por nombre

@@ -1,8 +1,9 @@
 """Acciones del módulo 07 · Auditoría (tests/Auditoria/test_Auditoria.py).
 
-Usuarios: admin (A, revisa) y campaign_leader (D, "dueño" de las evidencias y propuestas de prueba).
-D solo lo usa este módulo y Campañas; aprobar o rechazar notifica y mueve los puntos de D, así que no
-se usa `student` (lo comparten 9 módulos que corren en paralelo, entre ellos Notificaciones).
+Usuarios: admin (A, revisa), campaign_leader (D, dueño de la evidencia que se aprueba y de las propuestas)
+y store (T, dueño de la evidencia que se rechaza). D solo lo usan este módulo y Campañas, y T solo Tienda;
+aprobar mueve los puntos de D y rechazar no mueve los de T. No se usa `student` (lo comparten 9 módulos que
+corren en paralelo, entre ellos Notificaciones).
 
 Reglas de seguridad (estas pruebas corren contra prod por default):
 
@@ -11,9 +12,10 @@ Reglas de seguridad (estas pruebas corren contra prod por default):
 - Aprobar una propuesta global que sigue abierta a inscripciones invita a TODOS los usuarios activos
   (`notify_campaign_invite`). Por eso, fuera del stack desechable (AUTH_MODE != mock), TC-07-005
   intercepta el POST de aprobación: se prueba la UI y la petición, y el backend no se toca.
-- Cada evidencia nueva gasta el límite diario de D en esa acción (el catálogo de dev tiene 2 acciones con foto,
-  límite 1). Por eso el setup crea solo 2 evidencias y las reutilizan los tests. La limpieza de la corrida
-  rechaza las evidencias de D (revierte puntos) y las propuestas con marcador pendientes.
+- El límite diario es por usuario y por acción, y el catálogo que carga el CI (catalog_draft.json) tiene UNA sola
+  acción con foto y límite 1. Por eso cada usuario registra una sola evidencia (D la que se aprueba, T la que se
+  rechaza) y el setup no depende de que el catálogo tenga una segunda acción con foto. La limpieza de la corrida
+  rechaza esas evidencias (revierte puntos) y las propuestas con marcador pendientes.
 
 Todos los tests del módulo corren en orden dentro del mismo proceso; el estado compartido vive en `_STATE`.
 EE = 00 es provisional hasta que se haga el reparto de equipos.
@@ -48,7 +50,8 @@ _MAX_PROPOSAL_PAGES = 30
 # La API pagina de 50 en 50 (PAGE_SIZE) y el frontend solo lee la primera página de la cola.
 _QUEUE_PAGE_SIZE = 50
 
-_OWNER = "campaign_leader"
+_OWNER = "campaign_leader"  # dueño de la evidencia que se aprueba y de las propuestas
+_REJECT_OWNER = "store"  # dueño de la evidencia que se rechaza (rechazar no mueve puntos)
 _AUDIT_PATH = "/audit"
 _LOGS_PATH = "/api/v1/action-logs/"
 _MY_LOGS_PATH = "/api/v1/action-logs/mine/"
@@ -129,21 +132,19 @@ def _catalog(api: ApiClient) -> list[dict[str, Any]]:
     return items
 
 
-def _create_pending_log(api: ApiClient, *, prefer_other_than: set[str]) -> dict[str, Any]:
-    """Register a photo action as D and return {"id", "action"} of the new PENDING_AUDIT log.
+def _create_pending_log(api: ApiClient, owner: str) -> dict[str, Any]:
+    """Register a photo action as `owner` and return {"id", "action", "owner"} of the new PENDING_AUDIT log.
 
-    Tries the photo actions from the end of the catalog (Campañas uses the first ones), preferring
-    actions not in `prefer_other_than`, and moves on to the next one when the daily limit answers 429.
+    Tries the photo actions from the end of the catalog (Campañas uses the first ones) and moves on to the
+    next one when the daily limit answers 429.
     """
     photo = [a for a in _catalog(api) if a.get("validation_type") == "PHOTO"]
     if not photo:
         raise RuntimeError("El catálogo no tiene acciones con validación por foto")
-    ordered = [a for a in reversed(photo) if a["id"] not in prefer_other_than]
-    ordered += [a for a in reversed(photo) if a["id"] in prefer_other_than]
     png = _make_png()
-    for action in ordered:
+    for action in reversed(photo):
         response = api.call(
-            _OWNER,
+            owner,
             "POST",
             _LOGS_PATH,
             multipart={
@@ -156,15 +157,16 @@ def _create_pending_log(api: ApiClient, *, prefer_other_than: set[str]) -> dict[
             body = response.json()
             if body.get("status") != "PENDING_AUDIT":
                 raise RuntimeError(f"La evidencia de {action['name']!r} quedó en {body.get('status')}, no pendiente")
-            logger.info("Evidencia pendiente %s creada con la acción %r", body["log_id"], action["name"])
-            return {"id": str(body["log_id"]), "action": action}
+            logger.info("Evidencia pendiente %s de %s con la acción %r", body["log_id"], owner, action["name"])
+            return {"id": str(body["log_id"]), "action": action, "owner": owner}
         if response.status == 429:
             logger.info("Límite diario alcanzado en %r; se prueba otra acción con foto", action["name"])
             continue
         raise RuntimeError(f"POST {_LOGS_PATH} → {response.status}: {response.text()[:300]}")
     raise RuntimeError(
-        f"{_OWNER} ya agotó hoy el límite diario de todas las acciones con foto "
-        "(cada corrida usa 2 y la limpieza no libera el cupo); repite mañana o usa un ambiente desechable"
+        f"{owner} ya agotó hoy el límite diario de todas las acciones con foto "
+        "(cada corrida usa una por usuario y la limpieza no libera el cupo); "
+        "repite mañana o usa un ambiente desechable"
     )
 
 
@@ -181,12 +183,12 @@ def _create_proposal(api: ApiClient, *, title: str, action_id: str) -> dict[str,
     return api.json(_OWNER, "POST", _PROPOSALS_PATH, data=body, expected=(201,))
 
 
-def _api_log(api: ApiClient, log_id: str) -> dict[str, Any]:
-    """Read one of D's action logs from its own history (GET action-logs/mine/)."""
-    for log in api.pages(_OWNER, _MY_LOGS_PATH):
-        if str(log.get("id")) == log_id:
-            return log
-    raise RuntimeError(f"El registro {log_id} no aparece en el historial de {_OWNER}")
+def _api_log(api: ApiClient, log: dict[str, Any]) -> dict[str, Any]:
+    """Read a test log from its owner's own history (GET action-logs/mine/)."""
+    for item in api.pages(log["owner"], _MY_LOGS_PATH):
+        if str(item.get("id")) == log["id"]:
+            return item
+    raise RuntimeError(f"El registro {log['id']} no aparece en el historial de {log['owner']}")
 
 
 def _api_proposal(api: ApiClient, proposal_id: str) -> dict[str, Any]:
@@ -197,8 +199,8 @@ def _api_proposal(api: ApiClient, proposal_id: str) -> dict[str, Any]:
     raise RuntimeError(f"La propuesta {proposal_id} no aparece en la API de propuestas")
 
 
-def _total_points(api: ApiClient) -> int:
-    return int(api.json(_OWNER, "GET", _PROFILE_PATH)["total_points"])
+def _total_points(api: ApiClient, owner: str) -> int:
+    return int(api.json(owner, "GET", _PROFILE_PATH)["total_points"])
 
 
 # --- privadas: UI ---------------------------------------------------------------------------
@@ -271,10 +273,10 @@ def _queue_or_error_settled(page: Page) -> bool:
 
 
 def test_00_07_000_checkSetUp(page: Page) -> bool:
-    """Crea con la API las 2 evidencias pendientes y las 2 propuestas que usan los demás tests."""
+    """Crea con la API las 2 evidencias pendientes (una por usuario) y las 2 propuestas que usan los demás tests."""
     api = api_for_page(page)
-    approve_log = _create_pending_log(api, prefer_other_than=set())
-    reject_log = _create_pending_log(api, prefer_other_than={approve_log["action"]["id"]})
+    approve_log = _create_pending_log(api, _OWNER)
+    reject_log = _create_pending_log(api, _REJECT_OWNER)
     mission_action = _catalog(api)[0]["id"]
     _STATE.update(
         approve_log=approve_log,
@@ -318,7 +320,7 @@ def test_00_07_002_checkPendingEvidenceList(page: Page) -> bool:
     _open_audit(page)
     _find_evidence_card(page, log["id"])
     card = page.locator(Locs.audit_card_with_log_id(log["id"])).first
-    owner_id = api_for_page(page).user_id(_OWNER)
+    owner_id = api_for_page(page).user_id(log["owner"])
     expected = {
         "el nombre de la acción": action["name"],
         "el estado PENDIENTE": _BADGE_PENDING,
@@ -345,7 +347,7 @@ def test_00_07_002_checkPendingEvidenceList(page: Page) -> bool:
 def test_00_07_003_checkApproveEvidence(page: Page) -> bool:
     log = _state("approve_log")
     api = api_for_page(page)
-    points_before = _total_points(api)
+    points_before = _total_points(api, log["owner"])
     _open_audit(page)
     _find_evidence_card(page, log["id"])
     click_robust(page, Locs.audit_card_button(log["id"], _BTN_APPROVE))
@@ -355,18 +357,18 @@ def test_00_07_003_checkApproveEvidence(page: Page) -> bool:
     if _visible(page, Locs.alert_with_text(_MSG_APPROVE_FAILED), timeout=500):
         logger.error("La UI mostró el error al aprobar")
         return False
-    status = _api_log(api, log["id"])["status"]
+    status = _api_log(api, log)["status"]
     if status != "APPROVED":
         logger.error("La API dejó la evidencia en %s, se esperaba APPROVED", status)
         return False
     expected_points = points_before + int(log["action"]["points"])
-    if not wait_until(lambda: _total_points(api) == expected_points, page, timeout=_SHORT_TIMEOUT):
+    if not wait_until(lambda: _total_points(api, log["owner"]) == expected_points, page, timeout=_SHORT_TIMEOUT):
         logger.error(
             "Los puntos de %s no subieron %s (antes %s, ahora %s)",
-            _OWNER,
+            log["owner"],
             log["action"]["points"],
             points_before,
-            _total_points(api),
+            _total_points(api, log["owner"]),
         )
         return False
     return True
@@ -399,7 +401,7 @@ def test_00_07_004_checkRejectNeedsReason(page: Page) -> bool:
     if not _visible(page, Locs.audit_card_with_log_id(log["id"]), timeout=500):
         logger.error("La tarjeta desapareció aunque no se indicó el motivo")
         return False
-    if _api_log(api, log["id"])["status"] != "PENDING_AUDIT":
+    if _api_log(api, log)["status"] != "PENDING_AUDIT":
         logger.error("La evidencia cambió de estado sin motivo")
         return False
 
@@ -410,7 +412,7 @@ def test_00_07_004_checkRejectNeedsReason(page: Page) -> bool:
     if not _wait_card_gone(page, Locs.audit_card_with_log_id(log["id"])):
         logger.error("La tarjeta rechazada no salió de la cola")
         return False
-    saved = _api_log(api, log["id"])
+    saved = _api_log(api, log)
     if saved["status"] != "REJECTED" or saved.get("rejection_reason") != reason:
         logger.error(
             "La API tiene estado=%s motivo=%r; se esperaba REJECTED y %r",

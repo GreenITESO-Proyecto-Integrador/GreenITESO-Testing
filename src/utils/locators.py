@@ -16,6 +16,9 @@ class Locators:
     LOGIN_BUTTON = "//button[contains(normalize-space(.), 'Iniciar sesión con @iteso.mx')]"
     LOGIN_INSTITUTIONAL_NOTICE = "//p[normalize-space(.)='Usa exclusivamente tu cuenta institucional @iteso.mx.']"
     LOGIN_NOT_CONFIGURED_ALERT = "//*[@role='alert'][contains(., 'Microsoft login no está configurado')]"
+    PASSWORD_INPUT = "//input[@type='password']"
+    EMAIL_INPUT = "//input[@type='email']"
+    ALERT = "//*[@role='alert']"
 
     # --- Sesión (components/auth/*) ---
     SESSION_CHECKING = "//*[normalize-space(.)='Verificando sesión…']"
@@ -142,7 +145,9 @@ class Locators:
     CATALOG_CARD = "//main//ul/li//*[@data-slot='card']"
     CATALOG_CARD_TITLE = "//main//ul/li//*[@data-slot='card-title']"
     CATALOG_CARD_POINTS = "//main//ul/li//*[@data-slot='card']//span[contains(normalize-space(.), ' pts')]"
-    CATALOG_NO_IMPACT_NOTICE = "//main//ul/li//*[@data-slot='card'][contains(normalize-space(.), 'Impacto ambiental pendiente de calibrar')]"
+    CATALOG_NO_IMPACT_NOTICE = (
+        "//main//ul/li//*[@data-slot='card'][contains(normalize-space(.), 'Impacto ambiental pendiente de calibrar')]"
+    )
     CATALOG_EMPTY_TITLE = "//main//h2[normalize-space(.)='No hay acciones activas']"
     CATALOG_ERROR_TITLE = "//main//h2[normalize-space(.)='No se pudo cargar el catálogo']"
     CATALOG_RETRY_BUTTON = "//main//button[normalize-space(.)='Reintentar']"
@@ -157,8 +162,106 @@ class Locators:
         return f"//main//ul/li//*[@data-slot='card'][.//*[@data-slot='card-title'][contains(normalize-space(.), '{name}')]]"
 
     # --- Perfil (pages/Profile) ---
+    PROFILE_HEADER = "//header[.//h1]"
     PROFILE_NAME_TITLE = "//main//h1"
+    PROFILE_ROLE_BADGE = "//header//span[contains(@class,'rounded-full')]"
+    PROFILE_EMAIL = "//header//p[contains(@class,'text-muted-foreground')]"
+    PROFILE_AVATAR = "//header//div[contains(@class,'size-20') or contains(@class,'size-24')]"
+    PROFILE_EDIT_BUTTON = "//button[normalize-space(.)='Editar perfil']"
 
+    # Métricas de impacto acumulado
+    PROFILE_IMPACT_SECTION = "//section[@aria-labelledby='impacto-title']"
+    PROFILE_IMPACT_TITLE = "//*[@id='impacto-title']"
+    PROFILE_METRIC_CO2 = "//section[@aria-labelledby='impacto-title']//div[.//p[contains(text(),'CO₂ Evitado')]]"
+    PROFILE_METRIC_WATER = "//section[@aria-labelledby='impacto-title']//div[.//p[contains(text(),'Agua Ahorrada')]]"
+    PROFILE_METRIC_PLASTIC = (
+        "//section[@aria-labelledby='impacto-title']//div[.//p[contains(text(),'Plástico Reciclado')]]"
+    )
+
+    # Progreso y nivel
+    PROFILE_PROGRESS_SECTION = "//section[@aria-labelledby='progreso-title']"
+    PROFILE_PROGRESS_TITLE = "//*[@id='progreso-title']"
+    PROFILE_POINTS_TOTAL = (
+        "//section[@aria-labelledby='progreso-title']//div[.//p[normalize-space(.)='Puntos Totales']]"
+    )
+    PROFILE_POINTS_AVAILABLE = (
+        "//section[@aria-labelledby='progreso-title']//div[.//p[normalize-space(.)='Disponibles']]"
+    )
+    PROFILE_STREAK = "//section[@aria-labelledby='progreso-title']//div[.//p[contains(text(),'Racha')]]"
+    PROFILE_LEVEL = "//section[@aria-labelledby='progreso-title']//div[.//p[contains(text(),'Nivel')]]"
+
+    # Modal editar perfil (EditProfileDialog)
+    PROFILE_EDIT_DIALOG = "//*[@role='dialog'][.//*[normalize-space(.)='Editar perfil']]"
+    PROFILE_EDIT_AVATAR_PREVIEW = "//*[@role='dialog']//img[@alt='Previsualización']"
+    PROFILE_EDIT_AVATAR_FILE = "//*[@data-testid='profile-avatar-file']"
+    PROFILE_EDIT_UPLOAD_BUTTON = (
+        "//*[@role='dialog']//button[.//span[normalize-space(.)='Subir foto'] or normalize-space(.)='Subir foto']"
+    )
+    PROFILE_EDIT_LINK_BUTTON = "//*[@role='dialog']//button[contains(normalize-space(.),'Usar un enlace')]"
+    PROFILE_EDIT_AVATAR_URL_INPUT = "//input[@id='profile-avatar-url']"
+    PROFILE_EDIT_REMOVE_AVATAR_BUTTON = (
+        "//*[@role='dialog']//button[.//span[normalize-space(.)='Quitar'] or normalize-space(.)='Quitar']"
+    )
+    PROFILE_EDIT_BIO_INPUT = "//textarea[@id='profile-bio']"
+    PROFILE_EDIT_SAVE_BUTTON = "//*[@role='dialog']//button[normalize-space(.)='Guardar cambios']"
+    PROFILE_EDIT_CANCEL_BUTTON = "//*[@role='dialog']//button[normalize-space(.)='Cancelar']"
+    PROFILE_EDIT_SUCCESS_ALERT = (
+        "//*[@role='alert'][contains(normalize-space(.), '¡Perfil actualizado correctamente!')]"
+    )
+    PROFILE_EDIT_ERROR_ALERT = (
+        "//*[@role='alert'][not(contains(normalize-space(.), '¡Perfil actualizado correctamente!'))]"
+    )
+
+    # Onboarding / Nickname
+    ONBOARDING_MODAL = "//*[@role='dialog'][.//*[normalize-space(.)='Completa tu perfil'] or .//*[contains(normalize-space(.), 'Elige tu carrera')]]"
+    ONBOARDING_NICKNAME_INPUT = "//input[@id='onboarding-nickname']"
+    ONBOARDING_SUBMIT_BUTTON = (
+        "//*[@role='dialog']//button[normalize-space(.)='Continuar' or normalize-space(.)='Comenzar']"
+    )
+
+    # --- Clanes (pages/Clans/Clans.tsx, components/CreateClanDialog.tsx, ClanFormFields.tsx) ---
+    CLANS_CREATE_BUTTON = "//button[normalize-space(.)='Crear clan'][not(ancestor::*[@role='dialog'])]"
+    CLANS_SEARCH_INPUT = "//input[@aria-label='Buscar clanes por nombre']"
+    CLANS_DIRECTORY_NEXT = (
+        "//nav[@aria-label='Paginación de clanes']//button[@aria-label='Página siguiente']"
+    )
+    CREATE_CLAN_DIALOG = "//*[@role='dialog'][.//*[@data-slot='dialog-title'][normalize-space(.)='Crear clan']]"
+    CLAN_NAME_INPUT = "//input[@id='clan-name']"
+    CLAN_DESCRIPTION_INPUT = "//textarea[@id='clan-description']"
+    CLAN_NAME_FIELD_ERROR = "//input[@id='clan-name']/parent::div//p[@role='alert']"
+    CLAN_FORM_ALERT = "//*[@role='dialog']//form/p[@role='alert']"
+    CLAN_FORM_SUBMIT = "//*[@role='dialog']//button[@type='submit']"
+    CLAN_FORM_CANCEL = "//*[@role='dialog']//button[normalize-space(.)='Cancelar']"
+    CLAN_SUCCESS_BANNER = "//*[@role='status'][contains(normalize-space(.), 'Creaste')]"
+    CLAN_PROFILE_TITLE = "//main//h1"
+    CLAN_PROFILE_DISSOLVE_BUTTON = "//button[normalize-space(.)='Disolver clan'][not(ancestor::*[@role='dialog'])]"
+    CLAN_PROFILE_MEMBER_COUNT = "//main//dd[contains(normalize-space(.), 'miembro')]"
+    CLAN_PROFILE_INVITE_CODE_BUTTON = "//button[normalize-space(.)='Invitar con código']"
+    CLANS_JOIN_CODE_BUTTON = "//button[normalize-space(.)='Tengo una invitación']"
+    CLAN_JOIN_BUTTON = "//button[normalize-space(.)='Unirme al clan'][not(ancestor::*[@role='dialog'])]"
+    CLAN_REQUEST_JOIN_BUTTON = "//button[normalize-space(.)='Solicitar unirme']"
+    CLAN_LEAVE_BUTTON = "//button[normalize-space(.)='Salir del clan'][not(ancestor::*[@role='dialog'])]"
+    CLAN_SET_ACTIVE_BUTTON = "//button[normalize-space(.)='Establecer como clan activo']"
+    CLAN_ACTIVE_BADGE = "//span[contains(normalize-space(.), 'Es tu clan activo')]"
+    CLAN_COPY_LINK_BUTTON = "//button[normalize-space(.)='Copiar enlace de invitación']"
+    CLAN_TRANSFER_BUTTON = "//button[normalize-space(.)='Transferir liderazgo'][not(ancestor::*[@role='dialog'])]"
+    CLAN_TRANSFER_TRIGGER = "//*[@id='transfer-successor']"
+    CLAN_INVITE_CODE_INPUT = "//input[@id='clan-invite-code']"
+    CLAN_NOTICE = "//*[@role='status']"
+    CLAN_DIALOG_ALERT = "//*[@role='dialog']//p[@role='alert']"
+    CLAN_DIRECTORY_ERROR_TITLE = "//h3[normalize-space(.)='No se pudieron cargar los clanes']"
+    CLANS_DIRECTORY_RETRY = (
+        "//h3[normalize-space(.)='No se pudieron cargar los clanes']"
+        "/following::button[normalize-space(.)='Reintentar'][1]"
+    )
+    CLAN_EMPTY_SEARCH_TITLE = "//h3[normalize-space(.)='Sin resultados']"
+    CLAN_NOT_FOUND_TITLE = "//h2[normalize-space(.)='No encontramos este clan']"
+    CLAN_REQUEST_SENT_TITLE = "//h2[normalize-space(.)='Solicitud enviada']"
+    CLAN_CAMPAIGNS_TITLE = "//h2[@id='clan-campaigns-title']"
+    CLAN_CAMPAIGNS_EMPTY_TITLE = "//h3[normalize-space(.)='Sin campañas activas']"
+    CLAN_REQUESTS_EMPTY = "//p[normalize-space(.)='No hay solicitudes pendientes.']"
+    CLAN_ACCEPT_REQUEST_BUTTON = "//button[starts-with(@aria-label, 'Aceptar solicitud de ')]"
+    CLAN_REJECT_REQUEST_BUTTON = "//button[starts-with(@aria-label, 'Rechazar solicitud de ')]"
     # --- Tienda (pages/Store) ---
     STORE_TITLE = "//main//h1[normalize-space(.)='Tienda de canjeables']"
     STORE_BALANCE = "//section[@aria-label='Puntos disponibles para canje']//span[contains(@class,'text-3xl')]"
@@ -186,6 +289,31 @@ class Locators:
     STORE_TOAST_DESCRIPTION = "//div[contains(@class,'fixed')]//h5/following-sibling::p"
 
     # --- Locators parametrizables ---
+    @staticmethod
+    def clan_privacy_chip_with_text(text: str) -> str:
+        return f"//*[@role='group'][@aria-label='Privacidad del clan']//button[normalize-space(.)='{text}']"
+
+    @staticmethod
+    def char_counter_with_text(text: str) -> str:
+        return f"//p[@aria-hidden='true'][normalize-space(.)='{text}']"
+
+    @staticmethod
+    def clan_card_with_name(name: str) -> str:
+        return f"//a[contains(@href, '/clans/')][.//h3[normalize-space(.)='{name}']]"
+
+    @staticmethod
+    def dialog_button_with_text(text: str) -> str:
+        return f"//*[@role='dialog']//button[normalize-space(.)='{text}']"
+
+    @staticmethod
+    def member_count_with_text(text: str) -> str:
+        return f"//main//dd[normalize-space(.)='{text}']"
+
+    @staticmethod
+    def badge_with_text(text: str) -> str:
+        # El Badge del frontend no tiene data-slot; es un span/div con un icono y el texto.
+        return f"//main//*[self::span or self::div][normalize-space(.)='{text}']"
+
     @staticmethod
     def button_with_text(text: str) -> str:
         return f"//button[contains(normalize-space(.), {_xpath_literal(text)})]"
@@ -283,6 +411,58 @@ class Locators:
     def leaderboard_row_with_name(name: str) -> str:
         return f"//main//table/tbody/tr[.//td[contains(normalize-space(.), '{name}')]]"
 
+    # --- Auditoría (/audit) ---
+    AUDIT_TITLE = "//main//h1[normalize-space(.)='Panel de revisión']"
+    AUDIT_SUBTITLE = "//main//header/p[contains(normalize-space(.), 'PENDING_AUDIT')]"
+    AUDIT_ANY_EVIDENCE_CARD = "//li[.//input[starts-with(@id, 'rejection-reason-')]]"
+    AUDIT_QUEUE_LOADING = "//*[@role='status'][normalize-space(.)='Cargando cola de auditoría…']"
+    AUDIT_QUEUE_EMPTY_TITLE = "//h2[normalize-space(.)='No hay evidencias pendientes']"
+    AUDIT_QUEUE_ERROR_TITLE = "//h2[normalize-space(.)='No se pudo cargar la cola de auditoría']"
+    AUDIT_QUEUE_RETRY = (
+        "//section[.//h2[normalize-space(.)='No se pudo cargar la cola de auditoría']]"
+        "//button[normalize-space(.)='Reintentar']"
+    )
+    AUDIT_PROPOSALS_EMPTY_TITLE = "//h3[normalize-space(.)='No hay propuestas']"
+    AUDIT_PROPOSALS_ERROR_TITLE = "//h3[normalize-space(.)='No se pudieron cargar las propuestas']"
+    AUDIT_PROPOSALS_RETRY = (
+        "//*[.//h3[normalize-space(.)='No se pudieron cargar las propuestas']]"
+        "//button[normalize-space(.)='Reintentar']"
+    )
+    AUDIT_PROPOSALS_NEXT_PAGE = (
+        "//nav[@aria-label='Paginación de propuestas']//button[@aria-label='Página siguiente']"
+    )
+    AUDIT_PROPOSAL_REASON_TEXTAREA = "//textarea[starts-with(@id, 'proposal-reason-')]"
+
+    @staticmethod
+    def audit_tab_with_text(text: str) -> str:
+        return (
+            "//*[@role='tablist'][@aria-label='Secciones de auditoría']"
+            f"//*[@role='tab'][normalize-space(.)={_xpath_literal(text)}]"
+        )
+
+    @staticmethod
+    def audit_card_with_log_id(log_id: str) -> str:
+        """Evidence card of one action log; the rejection input id carries the log id."""
+        return f"//li[.//input[@id='rejection-reason-{log_id}']]"
+
+    @staticmethod
+    def audit_reason_input_with_log_id(log_id: str) -> str:
+        return f"//input[@id='rejection-reason-{log_id}']"
+
+    @staticmethod
+    def audit_card_button(log_id: str, text: str) -> str:
+        """Button (Aprobar / Rechazar) inside the evidence card of `log_id`."""
+        return f"{Locators.audit_card_with_log_id(log_id)}//button[normalize-space(.)={_xpath_literal(text)}]"
+
+    @staticmethod
+    def audit_evidence_image(action_name: str) -> str:
+        return f"//img[@alt={_xpath_literal('Evidencia de ' + action_name)}]"
+
+    @staticmethod
+    def audit_proposal_button(title: str, text: str) -> str:
+        """Button inside the proposal card whose title is `title` (Aprobar, Rechazar, Confirmar rechazo, Cancelar)."""
+        return f"{Locators.li_with_text(title)}//button[normalize-space(.)={_xpath_literal(text)}]"
+
 
 def _xpath_literal(value: str) -> str:
     """Quote `value` as an XPath string literal, using concat() when it holds both quote kinds."""
@@ -291,7 +471,7 @@ def _xpath_literal(value: str) -> str:
     if '"' not in value:
         return f'"{value}"'
     parts = value.split("'")
-    return "concat(" + ", \"'\", ".join(f"'{part}'" for part in parts) + ")"
+    return "concat(" + ', "\'", '.join(f"'{part}'" for part in parts) + ")"
 
 
 Locs = Locators

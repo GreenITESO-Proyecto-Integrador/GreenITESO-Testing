@@ -529,12 +529,15 @@ def test_00_11_013_checkOpenClanProfile(page: Page) -> bool:
         if not _reveal_clan_card(page, name):
             return False
         click_robust(page, Locs.clan_card_with_name(name))
-        if _clan_id_from_url(page) != clan_id:
+        if not wait_until(lambda: _clan_id_from_url(page) == clan_id, page, timeout=_SUBMIT_TIMEOUT):
             logger.error("La tarjeta no abrió el clan %s (URL: %s)", clan_id, page.url)
             return False
-        if not _expect_visible(page, Locs.CLAN_PROFILE_TITLE, "el título del perfil"):
+        # El h1 de "Clanes" sigue en el DOM un momento después del click. Esperar el del perfil.
+        title_locator = page.locator(Locs.CLAN_PROFILE_TITLE).filter(has_text=name)
+        if not locator_has_visible_match(title_locator, timeout=_SUBMIT_TIMEOUT):
+            logger.error("El perfil no mostró el título %r", name)
             return False
-        title = page.locator(Locs.CLAN_PROFILE_TITLE).first.inner_text().strip()
+        title = title_locator.first.inner_text().strip()
         if title != name:
             logger.error("El perfil muestra %r, se esperaba %r", title, name)
             return False

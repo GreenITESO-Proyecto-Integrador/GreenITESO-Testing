@@ -29,7 +29,9 @@ nunca se adjuntaron a un post (las de un post se borran junto con él).
 import json
 import re
 import secrets
+import struct
 import time
+import zlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from itertools import count
@@ -95,6 +97,25 @@ def is_marked(text: str | None, *, marker: str | None = None) -> bool:
     if not text:
         return False
     return marker in text if marker else bool(_MARKER_RE.search(text))
+
+
+def make_png(size: int = 8, *, min_bytes: int = 0) -> bytes:
+    """Build a valid solid-green PNG in memory; `min_bytes` pads it (for file-size limits).
+
+    Para evidencias y fotos de prueba: es una imagen sintética, sin datos de nadie.
+    """
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        body = kind + payload
+        return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    row = b"\x00" + b"\x2e\xa0\x43" * size  # filtro 0 + píxeles RGB
+    header = struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(row * size))
+    padding = max(0, min_bytes - len(png) - 24)  # 12 bytes por chunk (tEXt de relleno + IEND)
+    if padding:
+        png += chunk(b"tEXt", b"e2e\x00" + b"x" * max(0, padding - 4))
+    return png + chunk(b"IEND", b"")
 
 
 def _is_stale_marker(text: str | None, *, now: datetime) -> bool:

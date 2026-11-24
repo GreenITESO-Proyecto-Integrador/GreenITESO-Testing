@@ -1,6 +1,7 @@
 """06 · Registro de acciones — /actions/register
 
 Tests: test_RegistroAcciones.py  →  actions: src/actions/RegistroAcciones_actions.py
+Módulo del equipo 1, probado por el equipo 3 (EE = 01). Usuario propio: TEST_ACTIONS_EMAIL.
 Casos del test plan (Notion: GreenITESO — Test Plan):
 
 - TC-06-001 Registrar una acción sin evidencia

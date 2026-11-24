@@ -23,6 +23,7 @@ ROLES = {
     "leader": os.environ.get("TEST_LEADER_EMAIL", "e2e.leader@iteso.mx"),
     "campaign_leader": os.environ.get("TEST_CAMPAIGN_LEADER_EMAIL", "e2e.campaign.leader@iteso.mx"),
     "store": os.environ.get("TEST_STORE_EMAIL", "e2e.store@iteso.mx"),
+    "actions": os.environ.get("TEST_ACTIONS_EMAIL", "e2e.actions@iteso.mx"),
 }
 
 

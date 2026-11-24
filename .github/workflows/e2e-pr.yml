@@ -29,6 +29,7 @@ env:
   TEST_LEADER_EMAIL: e2e.leader@iteso.mx
   TEST_CAMPAIGN_LEADER_EMAIL: e2e.campaign.leader@iteso.mx
   TEST_STORE_EMAIL: e2e.store@iteso.mx
+  TEST_ACTIONS_EMAIL: e2e.actions@iteso.mx
 
 jobs:
   e2e:

@@ -27,6 +27,8 @@ Se usó Python con **pytest y Playwright**. Los archivos de [`release_qa/`](../r
 
 ### Reproducción
 
+Compose usa la etiqueta `postgres:18`. Para repetir la versión menor de la entrega, usar `postgres:18.6` en un override local. En la revisión evaluada, el Dockerfile de Frontend resolvió las dependencias sin lockfile.
+
 Desde la raíz de GreenITESO-Testing, preparar checkouts separados de Frontend y Backend en las revisiones indicadas. Ajustar las rutas del ejemplo al checkout utilizado. El nombre de proyecto Compose conecta las pruebas de persistencia con el contenedor Django desechable.
 
 ```sh

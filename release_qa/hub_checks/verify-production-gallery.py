@@ -2,15 +2,12 @@
 import json
 import sys
 from pathlib import Path
-from urllib.request import urlopen
 
 from playwright.sync_api import expect, sync_playwright
 
 base = sys.argv[1].rstrip("/")
-with urlopen(base + "/assets/results.json", timeout=20) as response:
-    manifest = json.load(response)
 new_cases = json.loads(Path(__file__).with_name("production-captures.json").read_text())
-chapters = {case["id"]: case["chapter"] for case in manifest["cases"]}
+chapters = {case_id: case["chapter"] for case_id, case in new_cases.items()}
 
 with sync_playwright() as playwright:
     for engine, width in ((playwright.chromium, 1440), (playwright.webkit, 390)):

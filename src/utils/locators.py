@@ -125,7 +125,9 @@ class Locators:
     CATALOG_CARD = "//main//ul/li//*[@data-slot='card']"
     CATALOG_CARD_TITLE = "//main//ul/li//*[@data-slot='card-title']"
     CATALOG_CARD_POINTS = "//main//ul/li//*[@data-slot='card']//span[contains(normalize-space(.), ' pts')]"
-    CATALOG_NO_IMPACT_NOTICE = "//main//ul/li//*[@data-slot='card'][contains(normalize-space(.), 'Impacto ambiental pendiente de calibrar')]"
+    CATALOG_NO_IMPACT_NOTICE = (
+        "//main//ul/li//*[@data-slot='card'][contains(normalize-space(.), 'Impacto ambiental pendiente de calibrar')]"
+    )
     CATALOG_EMPTY_TITLE = "//main//h2[normalize-space(.)='No hay acciones activas']"
     CATALOG_ERROR_TITLE = "//main//h2[normalize-space(.)='No se pudo cargar el catálogo']"
     CATALOG_RETRY_BUTTON = "//main//button[normalize-space(.)='Reintentar']"
@@ -140,7 +142,62 @@ class Locators:
         return f"//main//ul/li//*[@data-slot='card'][.//*[@data-slot='card-title'][contains(normalize-space(.), '{name}')]]"
 
     # --- Perfil (pages/Profile) ---
+    PROFILE_HEADER = "//header[.//h1]"
     PROFILE_NAME_TITLE = "//main//h1"
+    PROFILE_ROLE_BADGE = "//header//span[contains(@class,'rounded-full')]"
+    PROFILE_EMAIL = "//header//p[contains(@class,'text-muted-foreground')]"
+    PROFILE_AVATAR = "//header//div[contains(@class,'size-20') or contains(@class,'size-24')]"
+    PROFILE_EDIT_BUTTON = "//button[normalize-space(.)='Editar perfil']"
+
+    # Métricas de impacto acumulado
+    PROFILE_IMPACT_SECTION = "//section[@aria-labelledby='impacto-title']"
+    PROFILE_IMPACT_TITLE = "//*[@id='impacto-title']"
+    PROFILE_METRIC_CO2 = "//section[@aria-labelledby='impacto-title']//div[.//p[contains(text(),'CO₂ Evitado')]]"
+    PROFILE_METRIC_WATER = "//section[@aria-labelledby='impacto-title']//div[.//p[contains(text(),'Agua Ahorrada')]]"
+    PROFILE_METRIC_PLASTIC = (
+        "//section[@aria-labelledby='impacto-title']//div[.//p[contains(text(),'Plástico Reciclado')]]"
+    )
+
+    # Progreso y nivel
+    PROFILE_PROGRESS_SECTION = "//section[@aria-labelledby='progreso-title']"
+    PROFILE_PROGRESS_TITLE = "//*[@id='progreso-title']"
+    PROFILE_POINTS_TOTAL = (
+        "//section[@aria-labelledby='progreso-title']//div[.//p[normalize-space(.)='Puntos Totales']]"
+    )
+    PROFILE_POINTS_AVAILABLE = (
+        "//section[@aria-labelledby='progreso-title']//div[.//p[normalize-space(.)='Disponibles']]"
+    )
+    PROFILE_STREAK = "//section[@aria-labelledby='progreso-title']//div[.//p[contains(text(),'Racha')]]"
+    PROFILE_LEVEL = "//section[@aria-labelledby='progreso-title']//div[.//p[contains(text(),'Nivel')]]"
+
+    # Modal editar perfil (EditProfileDialog)
+    PROFILE_EDIT_DIALOG = "//*[@role='dialog'][.//*[normalize-space(.)='Editar perfil']]"
+    PROFILE_EDIT_AVATAR_PREVIEW = "//*[@role='dialog']//img[@alt='Previsualización']"
+    PROFILE_EDIT_AVATAR_FILE = "//*[@data-testid='profile-avatar-file']"
+    PROFILE_EDIT_UPLOAD_BUTTON = (
+        "//*[@role='dialog']//button[.//span[normalize-space(.)='Subir foto'] or normalize-space(.)='Subir foto']"
+    )
+    PROFILE_EDIT_LINK_BUTTON = "//*[@role='dialog']//button[contains(normalize-space(.),'Usar un enlace')]"
+    PROFILE_EDIT_AVATAR_URL_INPUT = "//input[@id='profile-avatar-url']"
+    PROFILE_EDIT_REMOVE_AVATAR_BUTTON = (
+        "//*[@role='dialog']//button[.//span[normalize-space(.)='Quitar'] or normalize-space(.)='Quitar']"
+    )
+    PROFILE_EDIT_BIO_INPUT = "//textarea[@id='profile-bio']"
+    PROFILE_EDIT_SAVE_BUTTON = "//*[@role='dialog']//button[normalize-space(.)='Guardar cambios']"
+    PROFILE_EDIT_CANCEL_BUTTON = "//*[@role='dialog']//button[normalize-space(.)='Cancelar']"
+    PROFILE_EDIT_SUCCESS_ALERT = (
+        "//*[@role='alert'][contains(normalize-space(.), '¡Perfil actualizado correctamente!')]"
+    )
+    PROFILE_EDIT_ERROR_ALERT = (
+        "//*[@role='alert'][not(contains(normalize-space(.), '¡Perfil actualizado correctamente!'))]"
+    )
+
+    # Onboarding / Nickname
+    ONBOARDING_MODAL = "//*[@role='dialog'][.//*[normalize-space(.)='Completa tu perfil'] or .//*[contains(normalize-space(.), 'Elige tu carrera')]]"
+    ONBOARDING_NICKNAME_INPUT = "//input[@id='onboarding-nickname']"
+    ONBOARDING_SUBMIT_BUTTON = (
+        "//*[@role='dialog']//button[normalize-space(.)='Continuar' or normalize-space(.)='Comenzar']"
+    )
 
     # --- Tienda (pages/Store) ---
     STORE_TITLE = "//main//h1[normalize-space(.)='Tienda de canjeables']"
@@ -274,7 +331,7 @@ def _xpath_literal(value: str) -> str:
     if '"' not in value:
         return f'"{value}"'
     parts = value.split("'")
-    return "concat(" + ", \"'\", ".join(f"'{part}'" for part in parts) + ")"
+    return "concat(" + ', "\'", '.join(f"'{part}'" for part in parts) + ")"
 
 
 Locs = Locators

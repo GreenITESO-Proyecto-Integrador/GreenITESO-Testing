@@ -320,15 +320,16 @@ def test_00_07_002_checkPendingEvidenceList(page: Page) -> bool:
     _open_audit(page)
     _find_evidence_card(page, log["id"])
     card = page.locator(Locs.audit_card_with_log_id(log["id"])).first
-    owner_id = api_for_page(page).user_id(log["owner"])
+    # Según la versión del frontend la tarjeta identifica al usuario por su id o por su correo.
+    owner_refs = (api_for_page(page).user_id(log["owner"]), env.TEST_USERS[log["owner"]])
     expected = {
-        "el nombre de la acción": action["name"],
-        "el estado PENDIENTE": _BADGE_PENDING,
-        "los puntos": f"{action['points']} pts",
-        "el usuario": owner_id,
+        "el nombre de la acción": (action["name"],),
+        "el estado PENDIENTE": (_BADGE_PENDING,),
+        "los puntos": (f"{action['points']} pts",),
+        "el usuario (id o correo)": owner_refs,
     }
     text = card.inner_text()
-    missing = [label for label, value in expected.items() if value not in text]
+    missing = [label for label, options in expected.items() if not any(option in text for option in options)]
     if missing:
         logger.error("La tarjeta no muestra: %s (texto: %r)", ", ".join(missing), text[:200])
         return False

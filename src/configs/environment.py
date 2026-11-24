@@ -47,6 +47,8 @@ TEST_USERS = {
     "campaign_leader": os.getenv("TEST_CAMPAIGN_LEADER_EMAIL", "qa.lider.campanas@iteso.mx"),
     # Cuenta propia de la Tienda: sus canjes cambian saldo e inventario y no se pueden deshacer.
     "store": os.getenv("TEST_STORE_EMAIL", "qa.tienda@iteso.mx"),
+    # Cuenta propia de Registro de acciones: registrar cambia sus puntos y gasta su cupo diario por acción.
+    "actions": os.getenv("TEST_ACTIONS_EMAIL", "qa.acciones@iteso.mx"),
 }
 
 REPORTING_DIR = ROOT_DIR / "reporting"

@@ -161,6 +161,18 @@ class Locators:
         """Tarjeta del catálogo cuyo título contiene `name`."""
         return f"//main//ul/li//*[@data-slot='card'][.//*[@data-slot='card-title'][contains(normalize-space(.), '{name}')]]"
 
+    # --- Registro de acciones (pages/ActionLogForm) ---
+    REGISTER_TITLE = "//main//h1[normalize-space(.)='Registrar acción']"
+    REGISTER_ACTION_SELECT = "//select[@id='action-select']"
+    REGISTER_ACTION_ERROR = "//p[@id='action-select-error']"
+    REGISTER_EVIDENCE_INPUT = "//input[@id='evidence-file']"
+    REGISTER_EVIDENCE_ERROR = "//p[@id='evidence-file-error']"
+    REGISTER_SUBMIT_BUTTON = "//main//form//button[@type='submit']"
+    REGISTER_CLEAR_BUTTON = "//main//form//button[normalize-space(.)='Limpiar']"
+    REGISTER_SUCCESS_SECTION = "//main//section[h2[normalize-space(.)='Acción registrada']]"
+    REGISTER_SUBMIT_ERROR_SECTION = "//main//section[h2[normalize-space(.)='No se pudo registrar la acción']]"
+    REGISTER_CATALOG_ERROR_SECTION = "//main//section[h2[normalize-space(.)='No se pudo cargar el catálogo']]"
+
     # --- Perfil (pages/Profile) ---
     PROFILE_HEADER = "//header[.//h1]"
     PROFILE_NAME_TITLE = "//main//h1"

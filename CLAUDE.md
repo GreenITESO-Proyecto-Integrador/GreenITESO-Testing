@@ -17,6 +17,7 @@ uv run python -m src.utils.auth --role admin
 uv run python -m src.utils.auth --role leader
 uv run python -m src.utils.auth --role campaign_leader   # líder propio del módulo Campañas
 uv run python -m src.utils.auth --role store             # cuenta propia del módulo Tienda (canjes)
+uv run python -m src.utils.auth --role actions           # cuenta propia de Registro de acciones
 ```
 
 Por default, las pruebas corren contra la **versión desplegada en producción** (`BASE_URL` en `.env.example`). La API está en el mismo dominio, porque nginx manda `/api/` al backend.
@@ -187,6 +188,7 @@ Hay dos modos, que se eligen con `AUTH_MODE` en `.env`:
 - Los tests que necesitan entrar **sin sesión** (como el de la pantalla de login) simplemente no llaman `login_as`.
 - El rol de líder de clan no es global: el usuario `leader` tiene que tener su clan como parte del setup del módulo. Campañas usa su propio `campaign_leader` (el backend permite un solo liderazgo por usuario); si ese usuario ya lidera un clan, el setup lo reusa en vez de crear uno.
 - La Tienda usa su propio `store`: canjear cambia su saldo e inventario y no se puede deshacer. En el stack desechable, `up.sh` le da 50 pts iniciales; en un ambiente desplegado necesita saldo real y artículos que aún no tenga (si no, el canje falla como BLOQUEADO).
+- Registro de acciones usa su propio `actions`: registrar cambia sus puntos y gasta su cupo diario por acción, y el backend cuenta también los registros rechazados, así que la limpieza no libera el cupo. Cada corrida elige acciones con cupo; si ya no queda (p. ej. una segunda corrida el mismo día con una sola acción con foto), el test falla como BLOQUEADO. Necesita el onboarding hecho (clan institucional): sin él, el backend rechaza todo registro.
 - `login_as` marca el recorrido guiado como visto (en `localStorage`) para que no tape la UI. Solo los tests del recorrido usan `login_as(page, role, skip_tour=False)`.
 
 ## Mocks de red: cuándo usarlos
@@ -230,7 +232,7 @@ dev y preprod **no están desplegados** (en el backend, `CLOUD_DEPLOYMENT_ENABLE
 
 1. **Disparo:** cada push a `dev` o `preprod` en Backend o Frontend corre su `trigger-e2e.yml` (copia de `ci/dispatch/trigger-e2e.yml`), que manda un `repository_dispatch` (`greeniteso-branch-updated`, con `repo`, `branch` y `sha`) a este repo. También se puede lanzar a mano en *Actions → E2E - rama → Run workflow*.
 2. **Checkout:** el repo que disparó va en su commit exacto y el otro en la punta de la misma rama.
-3. **Stack** (`ci/stack/up.sh`): Postgres en tmpfs, backend con `MICROSOFT_AUTH_MODE=mock` (migra y carga el catálogo al arrancar) y frontend con su Dockerfile real (nginx manda `/api/` y `/ws/` al backend), todo en `http://localhost:8080`. `seed_users.py` crea los 5 usuarios `e2e.*@iteso.mx` con onboarding hecho, `assign_user_role` deja al admin como ADMIN y el usuario `store` recibe 50 pts disponibles.
+3. **Stack** (`ci/stack/up.sh`): Postgres en tmpfs, backend con `MICROSOFT_AUTH_MODE=mock` (migra y carga el catálogo al arrancar) y frontend con su Dockerfile real (nginx manda `/api/` y `/ws/` al backend), todo en `http://localhost:8080`. `seed_users.py` crea los 6 usuarios `e2e.*@iteso.mx` con onboarding hecho, `assign_user_role` deja al admin como ADMIN y el usuario `store` recibe 50 pts disponibles.
 4. **Suite:** `pytest -m full -n 4` con `AUTH_MODE=mock`. No hace falta guardar sesiones ni tokens, y como la base es nueva en cada corrida no se acumula nada.
 5. **Resultados:** resumen en la página de la corrida, artifact `e2e-<rama>-<run>` con JUnit, Allure, screenshots, logs y `stack.log` (logs del backend/frontend). Con el secreto opcional `E2E_STATUS_TOKEN` (fine-grained PAT con *Commit statuses: write* en Backend y Frontend) deja el estado `e2e/<rama>` (✅/❌) en el commit que disparó.
 
@@ -241,7 +243,7 @@ BACKEND_DIR=../GreenITESO-Backend FRONTEND_DIR=../GreenITESO-Frontend ci/stack/u
 BASE_URL=http://localhost:8080 AUTH_MODE=mock AUTH_STATE_DIR=/tmp/e2e-auth \
   TEST_STUDENT_EMAIL=e2e.student@iteso.mx TEST_ADMIN_EMAIL=e2e.admin@iteso.mx \
   TEST_LEADER_EMAIL=e2e.leader@iteso.mx TEST_CAMPAIGN_LEADER_EMAIL=e2e.campaign.leader@iteso.mx \
-  TEST_STORE_EMAIL=e2e.store@iteso.mx \
+  TEST_STORE_EMAIL=e2e.store@iteso.mx TEST_ACTIONS_EMAIL=e2e.actions@iteso.mx \
   uv run pytest -m full -n 4
 ci/stack/down.sh
 ```

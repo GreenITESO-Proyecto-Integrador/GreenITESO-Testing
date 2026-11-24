@@ -16,7 +16,7 @@ pipeline {
 
     parameters {
         choice(name: 'SUITE', choices: ['sanity', 'full'], description: 'Marker de pytest a correr')
-        string(name: 'BASE_URL', defaultValue: 'https://greeniteso-production-frontend-682248660949.northamerica-south1.run.app', description: 'URL del frontend a probar')
+        string(name: 'BASE_URL', defaultValue: 'https://greeniteso.mocking.so', description: 'URL del frontend a probar')
         string(name: 'API_BASE_URL', defaultValue: '', description: 'URL del backend; vacío = mismo origen que BASE_URL')
         choice(name: 'AUTH_MODE', choices: ['refresh', 'mock'], description: 'refresh = ambiente desplegado; mock = stack local')
         choice(name: 'BROWSER', choices: ['chromium', 'firefox', 'webkit'], description: 'Navegador de Playwright')

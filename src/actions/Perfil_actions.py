@@ -263,6 +263,7 @@ def test_00_13_004_checkProfileAvatar(page: Page) -> bool:
     # Verificar que el modal se cierre limpiamente
     modal_closed = wait_until(
         lambda: not locator_has_visible_match(page.locator(Locs.PROFILE_EDIT_DIALOG), timeout=300),
+        page,
         timeout=_SHORT_TIMEOUT,
     )
     if not modal_closed:

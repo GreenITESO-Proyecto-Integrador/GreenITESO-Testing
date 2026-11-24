@@ -411,6 +411,58 @@ class Locators:
     def leaderboard_row_with_name(name: str) -> str:
         return f"//main//table/tbody/tr[.//td[contains(normalize-space(.), '{name}')]]"
 
+    # --- Auditoría (/audit) ---
+    AUDIT_TITLE = "//main//h1[normalize-space(.)='Panel de revisión']"
+    AUDIT_SUBTITLE = "//main//header/p[contains(normalize-space(.), 'PENDING_AUDIT')]"
+    AUDIT_ANY_EVIDENCE_CARD = "//li[.//input[starts-with(@id, 'rejection-reason-')]]"
+    AUDIT_QUEUE_LOADING = "//*[@role='status'][normalize-space(.)='Cargando cola de auditoría…']"
+    AUDIT_QUEUE_EMPTY_TITLE = "//h2[normalize-space(.)='No hay evidencias pendientes']"
+    AUDIT_QUEUE_ERROR_TITLE = "//h2[normalize-space(.)='No se pudo cargar la cola de auditoría']"
+    AUDIT_QUEUE_RETRY = (
+        "//section[.//h2[normalize-space(.)='No se pudo cargar la cola de auditoría']]"
+        "//button[normalize-space(.)='Reintentar']"
+    )
+    AUDIT_PROPOSALS_EMPTY_TITLE = "//h3[normalize-space(.)='No hay propuestas']"
+    AUDIT_PROPOSALS_ERROR_TITLE = "//h3[normalize-space(.)='No se pudieron cargar las propuestas']"
+    AUDIT_PROPOSALS_RETRY = (
+        "//*[.//h3[normalize-space(.)='No se pudieron cargar las propuestas']]"
+        "//button[normalize-space(.)='Reintentar']"
+    )
+    AUDIT_PROPOSALS_NEXT_PAGE = (
+        "//nav[@aria-label='Paginación de propuestas']//button[@aria-label='Página siguiente']"
+    )
+    AUDIT_PROPOSAL_REASON_TEXTAREA = "//textarea[starts-with(@id, 'proposal-reason-')]"
+
+    @staticmethod
+    def audit_tab_with_text(text: str) -> str:
+        return (
+            "//*[@role='tablist'][@aria-label='Secciones de auditoría']"
+            f"//*[@role='tab'][normalize-space(.)={_xpath_literal(text)}]"
+        )
+
+    @staticmethod
+    def audit_card_with_log_id(log_id: str) -> str:
+        """Evidence card of one action log; the rejection input id carries the log id."""
+        return f"//li[.//input[@id='rejection-reason-{log_id}']]"
+
+    @staticmethod
+    def audit_reason_input_with_log_id(log_id: str) -> str:
+        return f"//input[@id='rejection-reason-{log_id}']"
+
+    @staticmethod
+    def audit_card_button(log_id: str, text: str) -> str:
+        """Button (Aprobar / Rechazar) inside the evidence card of `log_id`."""
+        return f"{Locators.audit_card_with_log_id(log_id)}//button[normalize-space(.)={_xpath_literal(text)}]"
+
+    @staticmethod
+    def audit_evidence_image(action_name: str) -> str:
+        return f"//img[@alt={_xpath_literal('Evidencia de ' + action_name)}]"
+
+    @staticmethod
+    def audit_proposal_button(title: str, text: str) -> str:
+        """Button inside the proposal card whose title is `title` (Aprobar, Rechazar, Confirmar rechazo, Cancelar)."""
+        return f"{Locators.li_with_text(title)}//button[normalize-space(.)={_xpath_literal(text)}]"
+
 
 def _xpath_literal(value: str) -> str:
     """Quote `value` as an XPath string literal, using concat() when it holds both quote kinds."""

@@ -49,9 +49,12 @@ _STORAGE_KEYS = {
 }
 # Rutas con ADMIN_ROLES en GreenITESO-Frontend/src/routes.tsx.
 _ADMIN_ROUTES = ("/audit", "/audit?tab=proposals", "/admin/users", "/admin/feedback")
-# Etiquetas del menú lateral (GreenITESO-Frontend/src/components/layout/nav-links.ts).
-_ADMIN_NAV_LABELS = ("Auditoría", "Usuarios", "Buzón de feedback")
-_STUDENT_NAV_LABEL = "Clanes"
+# Links del menú lateral (GreenITESO-Frontend/src/components/layout/nav-links.ts).
+# Se identifican por href y no por etiqueta: "Buzón de feedback" nombra a dos links
+# distintos, el del estudiante (/feedback, hideForAdmin) y el del admin
+# (/admin/feedback, adminOnly). Buscar por texto confunde uno con otro.
+_ADMIN_NAV_HREFS = ("/audit", "/admin/users", "/admin/feedback")
+_STUDENT_NAV_HREF = "/clans"
 
 
 # --- privadas: API --------------------------------------------------------------------------
@@ -122,13 +125,13 @@ def _fake_session(role: str) -> Session:
     }
 
 
-def _sidebar_link(page: Page, label: str) -> Locator:
+def _sidebar_link(page: Page, href: str) -> Locator:
     # <aside> del menú lateral (components/layout/Sidebar.tsx) tiene el rol implícito "complementary".
-    return page.get_by_role("complementary").get_by_role("link", name=re.compile(rf"^\s*{re.escape(label)}\s*$"))
+    return page.get_by_role("complementary").locator(f'a[href="{href}"]')
 
 
-def _visible_nav_labels(page: Page, labels: Sequence[str]) -> list[str]:
-    return [label for label in labels if locator_has_visible_match(_sidebar_link(page, label))]
+def _visible_nav_links(page: Page, hrefs: Sequence[str]) -> list[str]:
+    return [href for href in hrefs if locator_has_visible_match(_sidebar_link(page, href))]
 
 
 def _admin_data_endpoints(user_id: str) -> tuple[str, ...]:
@@ -341,10 +344,10 @@ def test_02_15_014_checkStudentNavHidesAdminLinks(page: Page) -> bool:
     login_as(page, "student")
     go_to(page, "/")
     wait_for_app_ready(page)
-    if not _visible_nav_labels(page, [_STUDENT_NAV_LABEL]):
-        logger.error("No se ve el menú lateral (falta '%s'); no se puede validar", _STUDENT_NAV_LABEL)
+    if not _visible_nav_links(page, [_STUDENT_NAV_HREF]):
+        logger.error("No se ve el menú lateral (falta '%s'); no se puede validar", _STUDENT_NAV_HREF)
         return False
-    shown = _visible_nav_labels(page, _ADMIN_NAV_LABELS)
+    shown = _visible_nav_links(page, _ADMIN_NAV_HREFS)
     if shown:
         logger.error("El estudiante ve links de admin: %s", shown)
         return False
@@ -367,7 +370,8 @@ def test_02_15_015_checkAdminSeesAdminRoutes(page: Page) -> bool:
     if not locator_has_visible_match(title, timeout=_SHORT_TIMEOUT * 2):
         logger.error("No se ve el título 'Usuarios' en /admin/users")
         return False
-    missing = [label for label in _ADMIN_NAV_LABELS if label not in _visible_nav_labels(page, _ADMIN_NAV_LABELS)]
+    shown = _visible_nav_links(page, _ADMIN_NAV_HREFS)
+    missing = [href for href in _ADMIN_NAV_HREFS if href not in shown]
     if missing:
         logger.error("Al admin le faltan links de administración: %s", missing)
         return False

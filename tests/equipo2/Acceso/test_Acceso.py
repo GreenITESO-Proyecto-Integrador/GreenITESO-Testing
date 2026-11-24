@@ -127,7 +127,7 @@ def test_02_15_013_checkStudentBlockedFromAdminRoutes(page):
 
 @pytest.mark.full
 @pytest.mark.dependency(name="test_02_15_014_checkStudentNavHidesAdminLinks")
-@allure.description("Acceso: El menú del estudiante no muestra Auditoría, Usuarios ni Buzón de feedback")
+@allure.description("Acceso: El menú del estudiante no muestra links a /audit, /admin/users ni /admin/feedback")
 def test_02_15_014_checkStudentNavHidesAdminLinks(page):
     assert_action(actions.test_02_15_014_checkStudentNavHidesAdminLinks, page)
 

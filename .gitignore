@@ -13,6 +13,8 @@ reporting/allure-results/*
 reporting/allure-report/
 reporting/screenshots/*
 reporting/logs/*
+reporting/final-peer-qa/
+reporting/final-peer-qa*.xml
 !reporting/**/.gitkeep
 test-results/
 

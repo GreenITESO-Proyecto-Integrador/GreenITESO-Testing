@@ -34,3 +34,7 @@ docker run --rm --env-file .env -v "$HOME/.greeniteso-e2e/auth:/root/.greeniteso
 ```
 
 The container installs Chromium for Playwright. Browser execution still requires a reachable `BASE_URL`, valid test accounts or the disposable mock stack, and safe `E2E_CLEANUP` configuration.
+
+## QA de la entrega final
+
+[Metodología, reproducción y uso de IA](docs/qa-entrega-final-2026-11.md) · [Pruebas de la entrega](release_qa/) · [Resultados en el wiki](https://github.com/GreenITESO-Proyecto-Integrador/GreenITESO-Infra/wiki/QA-entrega-final-2026-11-24)

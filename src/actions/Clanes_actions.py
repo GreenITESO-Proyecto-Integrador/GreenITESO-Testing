@@ -50,8 +50,9 @@ _DESCRIPTION = "Clan creado por las pruebas E2E"
 _PUBLIC_LABEL = "Pública"
 _PRIVATE_LABEL = "Solo invitación"
 _EMPTY_NAME_ERROR = "Escribe un nombre para el clan."
-# El formulario de este ambiente muestra este texto tanto para un nombre repetido como para un clan de carrera.
+# Un nombre repetido muestra este texto. Un clan de carrera muestra el mensaje propio.
 _NAME_REJECTION_ERROR = "No repitas la misma acción en una campaña."
+_RESERVED_NAME_ERROR = "Ese nombre es de un clan de carrera. Elige otro."
 _ALREADY_LEADER_ERROR = "Ya eres líder de un clan. Solo puedes liderar uno a la vez."
 _RESERVED_NAME = "Ingeniería en Mecatrónica"
 _MISSING_CLAN_ID = "00000000-0000-4000-8000-000000000099"
@@ -474,7 +475,7 @@ def test_00_11_009_checkReservedCareerNameRejected(page: Page) -> bool:
     _open_create_dialog(page)
     _fill_form(page, _RESERVED_NAME)
     _submit_form(page)
-    return _expect_form_error(page, _NAME_REJECTION_ERROR)
+    return _expect_form_error(page, _RESERVED_NAME_ERROR)
 
 
 def test_00_11_010_checkSecondLeadershipRejected(page: Page) -> bool:

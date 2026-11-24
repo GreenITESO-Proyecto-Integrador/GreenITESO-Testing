@@ -71,7 +71,7 @@ def test_00_11_008_checkDuplicateNameRejected(page):
 
 @pytest.mark.full
 @pytest.mark.dependency(name="test_00_11_009_checkReservedCareerNameRejected", depends=["test_00_11_001_checkSetUp"])
-@allure.description("Clanes: El nombre de un clan de carrera es rechazado con 'No repitas la misma acción en una campaña.'")
+@allure.description("Clanes: El nombre de un clan de carrera es rechazado con 'Ese nombre es de un clan de carrera. Elige otro.'")
 def test_00_11_009_checkReservedCareerNameRejected(page):
     assert_action(actions.test_00_11_009_checkReservedCareerNameRejected, page)
 

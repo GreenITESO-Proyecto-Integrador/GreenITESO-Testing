@@ -22,8 +22,9 @@ Al iniciar también se limpian los marcadores de corridas viejas que no terminar
 
 Lo que NO se puede deshacer: canjes en la tienda, campañas finalizadas (quedan en el historial),
 notificaciones que les llegaron a usuarios reales, el costo de cambiar el nickname, propuestas de
-campaña rechazadas (no hay DELETE; quedan como REJECTED) y las imágenes del feed que se subieron pero
-nunca se adjuntaron a un post (las de un post se borran junto con él).
+campaña rechazadas (no hay DELETE; quedan como REJECTED), las imágenes del feed que se subieron pero
+nunca se adjuntaron a un post (las de un post se borran junto con él) y los envíos del buzón de
+feedback (no hay DELETE: el admin solo cambia su estado y nota; llevan el marcador pero quedan).
 """
 
 import json
@@ -399,6 +400,7 @@ def cleanup_run(marker: str, *, started_at: float) -> dict[str, Any]:
             "costo de cambiar el nickname",
             "propuestas de campaña rechazadas (no hay DELETE; quedan como REJECTED)",
             "imágenes subidas al feed que no llegaron a un post (las de un post se borran con él)",
+            "envíos del buzón de feedback (no hay DELETE; quedan con el marcador)",
         ],
     }
     env.LOGS_DIR.mkdir(parents=True, exist_ok=True)

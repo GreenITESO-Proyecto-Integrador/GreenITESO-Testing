@@ -475,6 +475,38 @@ class Locators:
         """Button inside the proposal card whose title is `title` (Aprobar, Rechazar, Confirmar rechazo, Cancelar)."""
         return f"{Locators.li_with_text(title)}//button[normalize-space(.)={_xpath_literal(text)}]"
 
+    # --- Feedback (/feedback) ---
+    FEEDBACK_TITLE = "//h1[normalize-space(.)='Buzón de Comentarios y Sugerencias']"
+    FEEDBACK_SUBJECT_INPUT = "#feedback-subject"
+    FEEDBACK_MESSAGE_INPUT = "#feedback-message"
+    FEEDBACK_FILE_INPUT = "[data-testid='feedback-file-input']"
+    FEEDBACK_SUBMIT = "//form//button[@type='submit']"
+    FEEDBACK_CLEAR = "//form//button[normalize-space(.)='Limpiar formulario']"
+    FEEDBACK_REMOVE_FILE = "//form//button[normalize-space(.)='Quitar']"
+    FEEDBACK_FILE_PREVIEW = "//form//img[@alt='Vista previa de captura']"
+    FEEDBACK_RATING_CLEAR = "//form//button[normalize-space(.)='Quitar calificación']"
+    FEEDBACK_CATEGORY_OPTIONS = "//*[@role='radiogroup'][@aria-label='Tipo de comentario']//button[@role='radio']"
+    FEEDBACK_RATING_OPTIONS = (
+        "//*[@role='radiogroup'][@aria-label='Calificación de la experiencia']//button[@role='radio']"
+    )
+    FEEDBACK_HISTORY_TITLE = "//h2[@id='mis-comentarios-title']"
+    FEEDBACK_HISTORY_EMPTY = "//p[normalize-space(.)='Aún no has enviado comentarios']"
+
+    @staticmethod
+    def feedback_category_with_label(label: str) -> str:
+        """Option of the category picker whose title is `label` (e.g. 'Error técnico')."""
+        return f"{Locators.FEEDBACK_CATEGORY_OPTIONS}[.//p[normalize-space(.)={_xpath_literal(label)}]]"
+
+    @staticmethod
+    def feedback_rating_with_value(value: int) -> str:
+        """Option of the rating picker for `value` (1-5); its aria-label starts with the number."""
+        return f"{Locators.FEEDBACK_RATING_OPTIONS}[starts-with(@aria-label, '{value} ')]"
+
+    @staticmethod
+    def feedback_card_with_subject(subject: str) -> str:
+        """Card of the history list ('Mis comentarios enviados') whose subject is `subject`."""
+        return f"//article[.//h3[normalize-space(.)={_xpath_literal(subject)}]]"
+
 
 def _xpath_literal(value: str) -> str:
     """Quote `value` as an XPath string literal, using concat() when it holds both quote kinds."""

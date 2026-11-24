@@ -9,6 +9,7 @@ Cubre las pruebas del módulo de identidad y perfil:
 
 import base64
 import json
+import re
 import time
 from typing import Any
 
@@ -40,7 +41,7 @@ _LOGIN_PATH = "/login"
 _REFRESH_API_GLOB = "**/api/v1/auth/refresh/**"
 _PROFILE_API_GLOB = "**/api/v1/profile/me/**"
 _CAREERS_API_GLOB = "**/api/v1/clans/institutional-clan/careers/**"
-_INSTITUTIONAL_CLAN_GLOB = "**/api/v1/clans/institutional-clan/**"
+_INSTITUTIONAL_CLAN_MATCHER = re.compile(r".*/api/v1/clans/institutional-clan/(?:\?.*)?$")
 _EXCHANGEABLES_GLOB = "**/api/v1/exchangeables/**"
 _INVENTORY_GLOB = "**/api/v1/exchangeables/my-inventory/**"
 _BADGES_API_GLOB = "**/api/v1/rankings/badges/**"
@@ -128,7 +129,7 @@ def test_00_13_001_checkProfileMetrics(page: Page) -> bool:
     mock_api_json(page, _PROFILE_API_GLOB, _fake_profile_data())
     mock_api_json(
         page,
-        _INSTITUTIONAL_CLAN_GLOB,
+        _INSTITUTIONAL_CLAN_MATCHER,
         {
             "career": "Ingeniería en Sistemas Computacionales",
             "nickname": "",
@@ -198,7 +199,7 @@ def test_00_13_004_checkProfileAvatar(page: Page) -> bool:
     mock_api_json(page, _PROFILE_API_GLOB, _fake_profile_data())
     mock_api_json(
         page,
-        _INSTITUTIONAL_CLAN_GLOB,
+        _INSTITUTIONAL_CLAN_MATCHER,
         {
             "career": "Ingeniería en Sistemas Computacionales",
             "nickname": "",
@@ -224,7 +225,7 @@ def test_00_13_004_checkProfileAvatar(page: Page) -> bool:
         logger.error("No se encontró el botón de 'Editar perfil'")
         return False
 
-    click_robust(page, page.locator(Locs.PROFILE_EDIT_BUTTON))
+    click_robust(page, Locs.PROFILE_EDIT_BUTTON)
 
     if not locator_has_visible_match(page.locator(Locs.PROFILE_EDIT_DIALOG), timeout=_SHORT_TIMEOUT):
         logger.error("No se abrió el diálogo de editar perfil")
@@ -243,7 +244,7 @@ def test_00_13_004_checkProfileAvatar(page: Page) -> bool:
 
     # Si el botón de enlace está disponible, abrir el campo de URL
     if link_button_visible and not url_input_visible:
-        click_robust(page, page.locator(Locs.PROFILE_EDIT_LINK_BUTTON))
+        click_robust(page, Locs.PROFILE_EDIT_LINK_BUTTON)
         url_input_visible = locator_has_visible_match(
             page.locator(Locs.PROFILE_EDIT_AVATAR_URL_INPUT), timeout=_SHORT_TIMEOUT
         )
@@ -257,8 +258,7 @@ def test_00_13_004_checkProfileAvatar(page: Page) -> bool:
         logger.error("No se encontró el botón 'Guardar cambios'")
         return False
 
-    cancel_btn = page.locator(Locs.PROFILE_EDIT_CANCEL_BUTTON).first
-    click_robust(page, cancel_btn)
+    click_robust(page, Locs.PROFILE_EDIT_CANCEL_BUTTON)
 
     # Verificar que el modal se cierre limpiamente
     modal_closed = wait_until(
@@ -279,13 +279,13 @@ def test_00_13_011_checkChangeNickname(page: Page) -> bool:
     mock_api_json(page, _PROFILE_API_GLOB, profile_without_clan)
     mock_api_json(
         page,
-        _INSTITUTIONAL_CLAN_GLOB,
+        _INSTITUTIONAL_CLAN_MATCHER,
         {"career": "", "nickname": "", "visibility": "PUBLIC", "institutional_clan": None},
     )
     mock_api_json(
         page,
         _CAREERS_API_GLOB,
-        ["Ingeniería en Sistemas Computacionales", "Ingeniería Ambiental"],
+        {"careers": ["Ingeniería en Sistemas Computacionales", "Ingeniería Ambiental"]},
     )
     mock_api_json(page, _EXCHANGEABLES_GLOB, [])
     mock_api_json(page, _INVENTORY_GLOB, [])
@@ -293,9 +293,8 @@ def test_00_13_011_checkChangeNickname(page: Page) -> bool:
 
     _ensure_session(page)
     go_to(page, "/")
-    wait_for_app_ready(page)
 
-    # Validar que se muestre el modal de onboarding
+    # Validar que se muestre el modal de onboarding (sin llamar wait_for_app_ready porque falla si el onboarding está abierto)
     if not locator_has_visible_match(page.locator(Locs.ONBOARDING_MODAL), timeout=_LOAD_TIMEOUT):
         logger.error("No se abrió el modal de onboarding para validar el nickname")
         return False

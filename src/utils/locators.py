@@ -16,6 +16,9 @@ class Locators:
     LOGIN_BUTTON = "//button[contains(normalize-space(.), 'Iniciar sesión con @iteso.mx')]"
     LOGIN_INSTITUTIONAL_NOTICE = "//p[normalize-space(.)='Usa exclusivamente tu cuenta institucional @iteso.mx.']"
     LOGIN_NOT_CONFIGURED_ALERT = "//*[@role='alert'][contains(., 'Microsoft login no está configurado')]"
+    PASSWORD_INPUT = "//input[@type='password']"
+    EMAIL_INPUT = "//input[@type='email']"
+    ALERT = "//*[@role='alert']"
 
     # --- Sesión (components/auth/*) ---
     SESSION_CHECKING = "//*[normalize-space(.)='Verificando sesión…']"
